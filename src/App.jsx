@@ -1,3 +1,4 @@
+// src/App.jsx
 import React, { Suspense, lazy } from "react";
 import { Routes, Route } from "react-router-dom";
 import { Box } from "@mui/material";
@@ -13,6 +14,8 @@ const Home = lazy(() => import("./pages/Home"));
 const ProductDetail = lazy(() => import("./pages/ProductDetail"));
 const Checkout = lazy(() => import("./pages/Checkout"));
 const CategoryProducts = lazy(() => import("./pages/CategoryProducts"));
+// --- NEW ---
+const SearchPage = lazy(() => import("./pages/SearchPage")); // 1. Naya page import karein
 
 function App() {
   return (
@@ -26,6 +29,9 @@ function App() {
             <Route path="/category" element={<CategoryProducts />} />
             <Route path="/product/:id" element={<ProductDetail />} />
             <Route path="/checkout" element={<Checkout />} />
+            {/* --- NEW --- */}
+            <Route path="/search" element={<SearchPage />} />{" "}
+            {/* 2. Naya route add karein */}
             <Route path="*" element={<Home />} />
           </Routes>
         </Suspense>
