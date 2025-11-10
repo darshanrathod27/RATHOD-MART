@@ -1,3 +1,4 @@
+// src/context/CartContext.jsx
 import React, { createContext, useContext, useState, useEffect } from "react";
 
 const CartContext = createContext();
@@ -19,38 +20,69 @@ export const CartProvider = ({ children }) => {
     localStorage.setItem("cartItems", JSON.stringify(cartItems));
   }, [cartItems]);
 
-  const addToCart = (product) => {
+  // Add to cart now supports product + variant
+  const addToCart = (product, variant = null) => {
     setCartItems((prev) => {
-      const exists = prev.find((item) => item.id === product.id);
+      const cartId = variant ? `${product.id}_${variant.id}` : `${product.id}`;
+      const exists = prev.find((item) => item.cartId === cartId);
       if (exists) {
         return prev.map((item) =>
-          item.id === product.id
+          item.cartId === cartId
             ? { ...item, quantity: item.quantity + 1 }
             : item
         );
       }
-      return [...prev, { ...product, quantity: 1 }];
+      // create new cart item with variant info
+      const newItem = {
+        // keep original product fields for display
+        id: product.id,
+        cartId,
+        name: product.name,
+        image: product.image,
+        price: product.price ?? 0,
+        originalPrice: product.originalPrice ?? null,
+        discount: product.discountPercent ?? 0,
+        quantity: 1,
+        selectedVariant: variant
+          ? {
+              id: variant.id,
+              sku: variant.sku || null,
+              color: variant.color?.name || variant.color?.value || null,
+              size: variant.size?.name || variant.size?.value || null,
+            }
+          : null,
+        // keep raw product for later if needed
+        productRef: product,
+      };
+      return [...prev, newItem];
     });
   };
 
-  const removeFromCart = (productId) => {
-    setCartItems((prev) => prev.filter((item) => item.id !== productId));
+  // remove using cartId
+  const removeFromCart = (cartId) => {
+    setCartItems((prev) => prev.filter((item) => item.cartId !== cartId));
   };
 
-  const updateQuantity = (productId, quantity) => {
+  // update quantity using cartId
+  const updateQuantity = (cartId, quantity) => {
     if (quantity <= 0) {
-      removeFromCart(productId);
+      removeFromCart(cartId);
       return;
     }
     setCartItems((prev) =>
-      prev.map((item) => (item.id === productId ? { ...item, quantity } : item))
+      prev.map((item) =>
+        item.cartId === cartId ? { ...item, quantity } : item
+      )
     );
   };
 
   const clearCart = () => setCartItems([]);
 
   const getCartTotal = () =>
-    cartItems.reduce((total, item) => total + item.price * item.quantity, 0);
+    cartItems.reduce(
+      (total, item) => total + Number(item.price || 0) * item.quantity,
+      0
+    );
 
   const getCartItemsCount = () =>
     cartItems.reduce((total, item) => total + item.quantity, 0);

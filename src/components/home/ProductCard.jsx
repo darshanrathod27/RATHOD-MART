@@ -26,16 +26,19 @@ const ProductCard = ({
   const navigate = useNavigate();
   const { addToCart } = useCart();
   const { toggleWishlist, isItemInWishlist } = useWishlist();
-  const isFavorite = isItemInWishlist(product.id);
+  const isFavorite = isItemInWishlist(product.id || product._id);
 
   const handleCardClick = () => {
-    navigate(`/product/${product.id}`);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    const pid = product.id || product._id; // ✅ handles both id & _id
+    if (pid) {
+      navigate(`/product/${pid}`);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   };
 
   const handleAddToCart = (e) => {
     e.stopPropagation();
-    addToCart(product);
+    addToCart(product); // ✅ same signature your context expects
     toast.success(`'${product.name}' added to cart!`, {
       duration: 2000,
       style: {
@@ -76,7 +79,7 @@ const ProductCard = ({
           border: "2px solid rgba(0, 0, 0, 0.04)",
         }}
       >
-        {/* Badge for non-compact cards */}
+        {/* Badge */}
         {product.badge && !hideDiscountChip && !isCompact && (
           <Chip
             label={product.badge}
@@ -115,7 +118,7 @@ const ProductCard = ({
           {/* Rating */}
           <Box className="product-rating-box">
             <Rating
-              value={product.rating}
+              value={product.rating || 0}
               precision={0.5}
               size="small"
               readOnly
@@ -128,7 +131,7 @@ const ProductCard = ({
               }}
             />
             <Typography variant="caption" className="product-reviews">
-              ({product.reviews})
+              ({product.reviews || 0})
             </Typography>
           </Box>
 
@@ -145,7 +148,7 @@ const ProductCard = ({
           </Box>
         </CardContent>
 
-        {/* Action Buttons - Perfect Circles */}
+        {/* Action Buttons */}
         <Box className="product-actions">
           <IconButton
             onClick={handleFavoriteToggle}
@@ -168,6 +171,7 @@ const ProductCard = ({
           >
             {isFavorite ? <Favorite /> : <FavoriteBorder />}
           </IconButton>
+
           <IconButton
             onClick={handleAddToCart}
             className="cart-btn"

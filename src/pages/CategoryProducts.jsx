@@ -57,11 +57,7 @@ const CategoryProducts = () => {
       setErr(null);
       try {
         const { sortBy, sortOrder } = sortMapping(filters.sortBy);
-        const params = {
-          limit: 120,
-          sortBy,
-          sortOrder,
-        };
+        const params = { limit: 120, sortBy, sortOrder };
         if (categoryId) params.category = categoryId;
         if (filters.brands?.length) params.brands = filters.brands;
         if (Array.isArray(filters.priceRange)) {
@@ -71,10 +67,10 @@ const CategoryProducts = () => {
 
         const data = await api.fetchProducts(params);
         if (!mounted) return;
-
         setAllProducts(data);
         setCategoryName(data?.[0]?.category?.name || "");
-      } catch {
+      } catch (e) {
+        console.error("CategoryProducts error:", e);
         if (!mounted) return;
         setErr("Failed to load category products");
       } finally {
@@ -87,7 +83,7 @@ const CategoryProducts = () => {
   }, [categoryId, filters.sortBy, filters.brands, filters.priceRange]);
 
   const filteredProducts = useMemo(() => {
-    let list = [...allProducts];
+    let list = Array.isArray(allProducts) ? [...allProducts] : [];
 
     if (filters.categories?.length) {
       list = list.filter((p) => {
@@ -186,7 +182,7 @@ const CategoryProducts = () => {
             {loading
               ? "Loading…"
               : err
-              ? "Error loading products"
+              ? err
               : `${filteredProducts.length} products found`}
           </Typography>
         </Box>
@@ -280,9 +276,6 @@ const CategoryProducts = () => {
           bottom: 24,
           left: 24,
           background: "linear-gradient(135deg, #2E7D32 0%, #4CAF50 100%)",
-          "&:hover": {
-            background: "linear-gradient(135deg, #1B5E20 0%, #2E7D32 100%)",
-          },
           zIndex: 1000,
         }}
       >

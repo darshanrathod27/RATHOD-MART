@@ -10,7 +10,7 @@ import ProductCard from "./ProductCard";
 import "./BestOffers.css";
 import api from "../../data/api";
 
-const MIN_DISCOUNT = 40; // show products with discountPercent >= this
+const MIN_DISCOUNT = 40;
 
 const BestOffers = () => {
   const ref = useRef(null);
@@ -26,23 +26,18 @@ const BestOffers = () => {
       setLoading(true);
       setError(null);
       try {
-        // Try server-side offer endpoint first (if available),
-        // otherwise fetch many and filter client-side
         let offers = [];
         try {
+          // first try server-side helper
           offers = await api.fetchOfferProducts({
             minDiscount: MIN_DISCOUNT,
             limit: 48,
           });
         } catch (e) {
-          // fallback
           const all = await api.fetchProducts({ limit: 48 });
           offers = all.filter((p) => (p.discountPercent || 0) >= MIN_DISCOUNT);
         }
-
-        if (mounted) {
-          setProducts(offers);
-        }
+        if (mounted) setProducts(offers);
       } catch (err) {
         console.error("BestOffers error:", err);
         if (mounted) setError("Failed to load offers");
@@ -147,34 +142,13 @@ const BestOffers = () => {
                 grabCursor={true}
                 className="best-offers-swiper"
                 breakpoints={{
-                  320: {
-                    slidesPerView: 1.2,
-                    spaceBetween: 15,
-                  },
-                  480: {
-                    slidesPerView: 1.5,
-                    spaceBetween: 15,
-                  },
-                  640: {
-                    slidesPerView: 2.2,
-                    spaceBetween: 18,
-                  },
-                  768: {
-                    slidesPerView: 2.8,
-                    spaceBetween: 18,
-                  },
-                  1024: {
-                    slidesPerView: 4,
-                    spaceBetween: 20,
-                  },
-                  1200: {
-                    slidesPerView: 5,
-                    spaceBetween: 20,
-                  },
-                  1400: {
-                    slidesPerView: 6,
-                    spaceBetween: 20,
-                  },
+                  320: { slidesPerView: 1.2, spaceBetween: 15 },
+                  480: { slidesPerView: 1.5, spaceBetween: 15 },
+                  640: { slidesPerView: 2.2, spaceBetween: 18 },
+                  768: { slidesPerView: 2.8, spaceBetween: 18 },
+                  1024: { slidesPerView: 4, spaceBetween: 20 },
+                  1200: { slidesPerView: 5, spaceBetween: 20 },
+                  1400: { slidesPerView: 6, spaceBetween: 20 },
                 }}
               >
                 {products.map((product) => (
@@ -187,7 +161,6 @@ const BestOffers = () => {
                       }}
                       className="product-card-wrapper"
                     >
-                      {/* Discount Ribbon (computed discountPercent) */}
                       <div className="discount-ribbon">
                         <span>
                           {product.discountPercent || 0}
@@ -207,7 +180,6 @@ const BestOffers = () => {
               </Swiper>
             )}
 
-            {/* Custom Navigation Buttons */}
             <div className="swiper-button-prev-custom">‹</div>
             <div className="swiper-button-next-custom">›</div>
           </Box>

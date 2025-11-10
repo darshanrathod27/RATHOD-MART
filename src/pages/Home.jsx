@@ -19,36 +19,31 @@ const Home = () => {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [showAllProducts, setShowAllProducts] = useState(false);
 
-  // Unified filters state your drawer already understands
   const [filters, setFilters] = useState({
-    categories: [], // array of category IDs (strings)
-    brands: [], // array of brand names (strings)
+    categories: [],
+    brands: [],
     priceRange: [0, 100000],
-    ratings: [], // array like [4, 3] => min = 3
-    discounts: [], // array like [10, 30] => min = 10
+    ratings: [],
+    discounts: [],
     inStock: false,
-    sortBy: "featured", // "featured" | "priceLowHigh" | "priceHighLow" | "rating" | "discount"
+    sortBy: "featured",
   });
 
   const [allProducts, setAllProducts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(null);
 
-  // server-sort mapping
   const sortMapping = (key) => {
     switch (key) {
       case "priceLowHigh":
         return { sortBy: "basePrice", sortOrder: "asc" };
       case "priceHighLow":
         return { sortBy: "basePrice", sortOrder: "desc" };
-      // "rating" & "discount" we’ll handle client-side below (most APIs don’t store rating/discount as sortable fields)
-      case "featured":
       default:
         return { sortBy: "createdAt", sortOrder: "desc" };
     }
   };
 
-  // Determine if any filter is truly active (to decide whether to show Featured section or filtered grid)
   const activeFiltersCount = useMemo(() => {
     return (
       (filters.categories?.length || 0) +
@@ -60,86 +55,67 @@ const Home = () => {
     );
   }, [filters]);
 
-  // Fetch from API when filters are applied
   useEffect(() => {
-    const shouldLoad = showAllProducts && activeFiltersCount > 0;
-    if (!shouldLoad) return;
-
     let mounted = true;
     (async () => {
+      if (!showAllProducts || activeFiltersCount === 0) return;
       setLoading(true);
       setErr(null);
-
       try {
-        // Build server params
         const { sortBy, sortOrder } = sortMapping(filters.sortBy);
-
-        // If multiple categories chosen, we can pass the first one, or all (backend may ignore array)
-        // We pass all as repeated params: categories=... (api.js supports arrays)
-        const params = {
-          limit: 120, // get a big chunk; client can still refine
-          sortBy,
-          sortOrder,
-        };
-
-        if (filters.categories?.length > 0) {
-          // If your backend expects `category` single string, pass first:
-          // params.category = filters.categories[0];
-          // If it can accept multiple, pass array:
-          params.category = filters.categories; // api.js will serialize arrays
-        }
-
-        if (filters.brands?.length > 0) {
-          // Your backend may not filter by brand; harmless to send
-          params.brands = filters.brands;
-        }
-
-        // Price to backend
+        const params = { limit: 120, sortBy, sortOrder };
+        if (filters.categories?.length) params.category = filters.categories;
+        if (filters.brands?.length) params.brands = filters.brands;
         if (Array.isArray(filters.priceRange)) {
           params.minPrice = filters.priceRange[0];
           params.maxPrice = filters.priceRange[1];
         }
 
         const data = await api.fetchProducts(params);
-        if (!mounted) return;
-        setAllProducts(data);
+        if (mounted) setAllProducts(data);
       } catch (e) {
-        if (!mounted) return;
-        setErr("Failed to load products");
+        console.error("Home fetch error", e);
+        if (mounted) setErr("Failed to load products");
       } finally {
         if (mounted) setLoading(false);
       }
     })();
-
-    return () => {
-      mounted = false;
-    };
+    return () => (mounted = false);
   }, [showAllProducts, activeFiltersCount, filters]);
 
-  // Client-side refine for rating/discount/inStock + brand (if server didn’t filter)
   const filteredProducts = useMemo(() => {
-    let list = [...allProducts];
+    let list = Array.isArray(allProducts) ? [...allProducts] : [];
 
-    // Brand refine (if backend ignored it)
+    if (filters.categories?.length) {
+      list = list.filter((p) => {
+        const cid = p?.category?._id || p?.category;
+        return cid && filters.categories.includes(String(cid));
+      });
+    }
+
     if (filters.brands?.length) {
       list = list.filter((p) => p.brand && filters.brands.includes(p.brand));
     }
 
-    // Rating refine
+    if (Array.isArray(filters.priceRange)) {
+      const [min, max] = filters.priceRange;
+      list = list.filter((p) => {
+        const price = Number(p.price ?? 0);
+        return price >= min && price <= max;
+      });
+    }
+
     if (filters.ratings?.length) {
       const minRating = Math.min(...filters.ratings);
       list = list.filter((p) => (p.rating || 0) >= minRating);
     }
 
-    // Discount refine (uses api normalization: discountPercent)
     if (filters.discounts?.length) {
       const minDiscount = Math.min(...filters.discounts);
       list = list.filter((p) => (p.discountPercent || 0) >= minDiscount);
     }
 
-    // Stock refine
     if (filters.inStock) {
-      // Prefer `totalStock` if present; fallback to `inStock` boolean
       list = list.filter((p) =>
         typeof p.totalStock === "number"
           ? p.totalStock > 0
@@ -147,7 +123,6 @@ const Home = () => {
       );
     }
 
-    // Sort refine for "rating" / "discount" that backend can’t handle
     if (filters.sortBy === "rating") {
       list.sort((a, b) => (b.rating || 0) - (a.rating || 0));
     } else if (filters.sortBy === "discount") {
@@ -162,15 +137,6 @@ const Home = () => {
     setShowAllProducts(true);
   };
 
-  const handleRemoveFilterChip = (field, value) => {
-    setFilters((prev) => {
-      if (Array.isArray(prev[field])) {
-        return { ...prev, [field]: prev[field].filter((x) => x !== value) };
-      }
-      return prev;
-    });
-  };
-
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -181,28 +147,16 @@ const Home = () => {
       <Box>
         <HeroBanner />
         <DealGrids />
-        <Box id="brands-section">
-          <Brands />
-        </Box>
+        <Brands />
         <BestOffers />
-        <Box id="categories-section">
-          <Categories />
-        </Box>
+        <Categories />
 
-        <Box id="products-section">
+        <Box id="products-section" sx={{ py: 8 }}>
           {showAllProducts && activeFiltersCount > 0 ? (
-            <Container maxWidth="xl" sx={{ py: 8 }}>
+            <Container maxWidth="xl">
               <Typography
                 variant="h3"
-                sx={{
-                  fontWeight: 900,
-                  textAlign: "center",
-                  mb: 1,
-                  background:
-                    "linear-gradient(135deg, #1B5E20 0%, #4CAF50 100%)",
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                }}
+                sx={{ fontWeight: 900, textAlign: "center", mb: 1 }}
               >
                 Filtered Products
               </Typography>
@@ -215,17 +169,21 @@ const Home = () => {
                 {loading
                   ? "Loading..."
                   : err
-                  ? "Error loading products"
+                  ? err
                   : `${filteredProducts.length} products found`}
               </Typography>
 
-              {/* Active filter chips */}
               <Box sx={{ mb: 3, display: "flex", gap: 1, flexWrap: "wrap" }}>
                 {filters.categories.map((cat) => (
                   <Chip
                     key={cat}
                     label={`Category: ${cat}`}
-                    onDelete={() => handleRemoveFilterChip("categories", cat)}
+                    onDelete={() =>
+                      setFilters((p) => ({
+                        ...p,
+                        categories: p.categories.filter((c) => c !== cat),
+                      }))
+                    }
                     color="success"
                   />
                 ))}
@@ -233,7 +191,12 @@ const Home = () => {
                   <Chip
                     key={brand}
                     label={`Brand: ${brand}`}
-                    onDelete={() => handleRemoveFilterChip("brands", brand)}
+                    onDelete={() =>
+                      setFilters((p) => ({
+                        ...p,
+                        brands: p.brands.filter((b) => b !== brand),
+                      }))
+                    }
                     color="success"
                   />
                 ))}
@@ -241,7 +204,12 @@ const Home = () => {
                   <Chip
                     key={rating}
                     label={`${rating}★ & up`}
-                    onDelete={() => handleRemoveFilterChip("ratings", rating)}
+                    onDelete={() =>
+                      setFilters((p) => ({
+                        ...p,
+                        ratings: p.ratings.filter((r) => r !== rating),
+                      }))
+                    }
                     color="success"
                   />
                 ))}
@@ -250,23 +218,16 @@ const Home = () => {
                     key={discount}
                     label={`${discount}% off`}
                     onDelete={() =>
-                      handleRemoveFilterChip("discounts", discount)
+                      setFilters((p) => ({
+                        ...p,
+                        discounts: p.discounts.filter((d) => d !== discount),
+                      }))
                     }
                     color="success"
                   />
                 ))}
-                {filters.inStock && (
-                  <Chip
-                    label="In Stock"
-                    onDelete={() =>
-                      setFilters((p) => ({ ...p, inStock: false }))
-                    }
-                    color="success"
-                  />
-                )}
               </Box>
 
-              {/* Grid */}
               {err ? (
                 <Box sx={{ textAlign: "center", py: 10 }}>
                   <Typography color="error">{err}</Typography>
@@ -308,12 +269,10 @@ const Home = () => {
               )}
             </Container>
           ) : (
-            // If no active filters -> show your Featured section as before
             <FeaturedProducts />
           )}
         </Box>
 
-        {/* Floating Filter Button */}
         <Fab
           color="primary"
           onClick={() => setIsFilterOpen(true)}
@@ -322,19 +281,12 @@ const Home = () => {
             bottom: 24,
             left: 24,
             background: "linear-gradient(135deg, #2E7D32 0%, #4CAF50 100%)",
-            "&:hover": {
-              background: "linear-gradient(135deg, #1B5E20 0%, #2E7D32 100%)",
-              transform: "scale(1.08)",
-            },
             zIndex: 1000,
-            transition: "all 0.25s",
-            boxShadow: "0 6px 20px rgba(46,125,50,0.35)",
           }}
         >
           <FilterList />
         </Fab>
 
-        {/* Filter Drawer */}
         <AdvancedFilterDrawer
           open={isFilterOpen}
           onClose={() => setIsFilterOpen(false)}

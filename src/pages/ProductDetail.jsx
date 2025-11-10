@@ -15,15 +15,13 @@ import {
   Rating,
   Chip,
   Divider,
-  Tab,
-  Tabs,
-  Avatar,
   Paper,
   IconButton,
   Breadcrumbs,
   Link,
   Modal,
   Backdrop,
+  TextField,
 } from "@mui/material";
 import {
   AddShoppingCart,
@@ -36,6 +34,7 @@ import {
   NavigateNext,
   Close,
   ShoppingBag,
+  Star,
 } from "@mui/icons-material";
 import { motion } from "framer-motion";
 import { useParams, useNavigate } from "react-router-dom";
@@ -46,20 +45,31 @@ import ProductCard from "../components/home/ProductCard";
 import api from "../data/api";
 import "./ProductDetail.css";
 
-const PriceBlock = ({ basePrice, discountPrice, discountPercent }) => {
+const PriceBlock = ({
+  basePrice,
+  discountPrice,
+  discountPercent,
+  currentPrice,
+}) => {
+  const priceToShow =
+    typeof currentPrice !== "undefined" && currentPrice !== null
+      ? currentPrice
+      : discountPrice ?? basePrice;
+
   const hasDiscount =
     typeof discountPrice === "number" &&
     discountPrice > 0 &&
     discountPrice < basePrice;
+
   return (
     <Box className="price-section">
       <Typography className="current-price">
-        ₹{(hasDiscount ? discountPrice : basePrice)?.toLocaleString()}
+        ₹{priceToShow?.toLocaleString() || 0}
       </Typography>
       {hasDiscount && (
         <>
           <Typography className="original-price">
-            ₹{basePrice?.toLocaleString()}
+            ₹{basePrice?.toLocaleString() || 0}
           </Typography>
           <Chip
             label={`${discountPercent || 0}% OFF`}
@@ -82,60 +92,107 @@ const ProductDetail = () => {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
 
+  const [variants, setVariants] = useState([]);
+  const [selectedVariant, setSelectedVariant] = useState(null);
+  const [currentStock, setCurrentStock] = useState(0);
+  const [currentImages, setCurrentImages] = useState([]);
+  const [currentPrice, setCurrentPrice] = useState(null);
   const [selectedImage, setSelectedImage] = useState(0);
-  const [tabValue, setTabValue] = useState(0);
   const [zoomModalOpen, setZoomModalOpen] = useState(false);
   const [mousePosition, setMousePosition] = useState({ x: 50, y: 50 });
   const [isHovering, setIsHovering] = useState(false);
+  const [userRating, setUserRating] = useState(0);
+  const [ratingComment, setRatingComment] = useState("");
+
   const imageRef = useRef(null);
 
   useEffect(() => {
     let mounted = true;
     (async () => {
       setLoading(true);
-      setErr(null);
       try {
         const data = await api.fetchProductById(id);
         if (!mounted) return;
 
         setProduct(data);
+        setCurrentImages(
+          data.generalImages && data.generalImages.length > 0
+            ? data.generalImages
+            : (data.imagesUrls || [data.image]).filter(Boolean)
+        );
+        setCurrentStock(data.totalStock ?? data.stock ?? 0);
+        setCurrentPrice(data.price ?? data.basePrice ?? null);
+
+        try {
+          const invVariants = await api.fetchProductVariants(id);
+          let merged = [];
+          if (Array.isArray(data.variants) && data.variants.length > 0) {
+            merged = data.variants.map((v) => {
+              const found = invVariants.find(
+                (iv) => String(iv.id) === String(v.id)
+              );
+              return {
+                ...v,
+                stock: found?.stock ?? v.stock ?? 0,
+                price: v.price ?? found?.price ?? null,
+              };
+            });
+          } else {
+            merged = invVariants.map((v) => ({
+              id: v.id,
+              sku: v.sku,
+              price: v.price,
+              stock: v.stock,
+              color: v.color,
+              size: v.size,
+              images: v.images || [],
+            }));
+          }
+
+          setVariants(merged);
+          if (merged.length > 0) {
+            const def = merged.find((v) => v.stock > 0) || merged[0];
+            handleVariantChange(def, data);
+          }
+        } catch (err) {
+          console.warn("Variant fetch failed:", err);
+        }
 
         const catId = data?.category?._id || data?.category || null;
         if (catId) {
           const rel = await api.fetchProducts({ category: catId, limit: 12 });
           setRelated(rel.filter((p) => p.id !== data.id).slice(0, 4));
-        } else {
-          setRelated([]);
         }
-
-        setSelectedImage(0);
-      } catch (e) {
-        if (!mounted) return;
+      } catch (err) {
         setErr("Product not found");
       } finally {
-        if (mounted) setLoading(false);
+        setLoading(false);
       }
     })();
     return () => {
       mounted = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const gallery = useMemo(() => {
     if (!product) return [];
-    if (Array.isArray(product.images) && product.images.length) {
+    if (Array.isArray(currentImages) && currentImages.length)
+      return currentImages.filter(Boolean);
+    if (Array.isArray(product.images))
       return product.images
-        .map((img) => img.fullUrl || img.url || product.image)
+        .map((i) => i.fullUrl || i.url || product.image)
         .filter(Boolean);
-    }
     return product.image ? [product.image] : [];
-  }, [product]);
+  }, [product, currentImages]);
 
-  const isFavorite = product ? isItemInWishlist(product.id) : false;
+  const isFavorite = product
+    ? isItemInWishlist(product.id || product._id)
+    : false;
 
   const handleAddToCart = () => {
     if (!product) return;
-    addToCart(product);
+    addToCart(product, selectedVariant || null);
     toast.success(`${product.name} added to cart!`, {
       icon: "🛒",
       style: { background: "#2E7D32", color: "#fff", fontWeight: 600 },
@@ -144,20 +201,36 @@ const ProductDetail = () => {
 
   const handleBuyNow = () => {
     if (!product) return;
-    addToCart(product);
+    addToCart(product, selectedVariant || null);
     navigate("/checkout");
-    toast.success("Proceeding to checkout!", {
-      icon: "🚀",
-      style: { background: "#FF9800", color: "#fff", fontWeight: 600 },
-    });
   };
 
   const handleFavoriteToggle = () => {
-    if (!product) return;
     toggleWishlist(product);
     toast.success(isFavorite ? "Removed from wishlist" : "Added to wishlist!", {
       icon: isFavorite ? "💔" : "❤️",
     });
+  };
+
+  const handleVariantChange = (variant, prod = product) => {
+    if (!variant) {
+      setSelectedVariant(null);
+      setCurrentStock(prod?.stock ?? 0);
+      setCurrentImages(
+        prod?.generalImages?.length
+          ? prod.generalImages
+          : (prod?.imagesUrls || [prod?.image]).filter(Boolean)
+      );
+      setCurrentPrice(prod?.price ?? null);
+      return;
+    }
+
+    setSelectedVariant(variant);
+    setCurrentStock(variant.stock ?? prod?.stock ?? 0);
+    setCurrentPrice(variant.price ?? prod?.price ?? null);
+    if (Array.isArray(variant.images) && variant.images.length > 0)
+      setCurrentImages(variant.images);
+    else setCurrentImages(prod?.generalImages || [prod?.image]);
   };
 
   const handleMouseMove = useCallback((e) => {
@@ -165,32 +238,39 @@ const ProductDetail = () => {
     const rect = imageRef.current.getBoundingClientRect();
     const x = ((e.clientX - rect.left) / rect.width) * 100;
     const y = ((e.clientY - rect.top) / rect.height) * 100;
-    setMousePosition({
-      x: Math.max(0, Math.min(100, x)),
-      y: Math.max(0, Math.min(100, y)),
-    });
+    setMousePosition({ x, y });
   }, []);
 
-  if (loading) {
+  const handleSubmitRating = () => {
+    if (userRating === 0) {
+      toast.error("Please select a rating!");
+      return;
+    }
+    toast.success("Thank you for your feedback!");
+    setUserRating(0);
+    setRatingComment("");
+  };
+
+  if (loading)
     return (
       <Container sx={{ py: 10 }}>
         <Typography>Loading product…</Typography>
       </Container>
     );
-  }
-  if (err || !product) {
+
+  if (err || !product)
     return (
       <Container sx={{ py: 10 }}>
-        <Typography color="error">{err || "Error loading product"}</Typography>
+        <Typography color="error">{err}</Typography>
       </Container>
     );
-  }
 
   const currentImage = gallery[selectedImage];
 
   return (
     <Box className="product-detail-page">
       <Container maxWidth="xl">
+        {/* Breadcrumb */}
         <Breadcrumbs
           separator={<NavigateNext fontSize="small" />}
           className="breadcrumbs"
@@ -223,6 +303,7 @@ const ProductDetail = () => {
           className="product-main-section"
         >
           <Grid container>
+            {/* Left gallery */}
             <Grid item xs={12} md={6}>
               <Box className="product-gallery">
                 {product.badge && (
@@ -246,48 +327,25 @@ const ProductDetail = () => {
                   ) : (
                     <Typography>No Image</Typography>
                   )}
-
-                  {isHovering && currentImage && (
-                    <Box
-                      className="zoom-lens"
-                      style={{
-                        left: `${mousePosition.x}%`,
-                        top: `${mousePosition.y}%`,
-                      }}
-                    />
-                  )}
                 </Box>
 
-                {isHovering && currentImage && (
-                  <Box className="side-zoom-display">
-                    <Box
-                      className="zoomed-image"
-                      style={{
-                        backgroundImage: `url(${currentImage})`,
-                        backgroundPosition: `${mousePosition.x}% ${mousePosition.y}%`,
-                        backgroundSize: "300%",
-                        backgroundRepeat: "no-repeat",
-                      }}
-                    />
-                  </Box>
-                )}
-
                 <Box className="thumbnail-gallery">
-                  {gallery.map((img, index) => (
+                  {gallery.map((img, i) => (
                     <Box
-                      key={index}
+                      key={i}
                       className={`thumbnail ${
-                        selectedImage === index ? "active" : ""
+                        selectedImage === i ? "active" : ""
                       }`}
-                      onClick={() => setSelectedImage(index)}
+                      onClick={() => setSelectedImage(i)}
                     >
-                      <img src={img} alt={`Thumbnail ${index + 1}`} />
+                      <img src={img} alt={`Thumb ${i + 1}`} />
                     </Box>
                   ))}
                 </Box>
               </Box>
             </Grid>
 
+            {/* Right info */}
             <Grid item xs={12} md={6}>
               <Box className="product-info">
                 {product.brand && (
@@ -299,10 +357,11 @@ const ProductDetail = () => {
                   {product.name}
                 </Typography>
 
+                {/* Rating + Stock */}
                 <Box className="rating-section">
                   <Rating
                     value={product.rating || 0}
-                    precision={0.1}
+                    precision={0.5}
                     readOnly
                   />
                   <Typography className="rating-text">
@@ -311,23 +370,13 @@ const ProductDetail = () => {
                   </Typography>
                   <Chip
                     label={
-                      typeof product.totalStock === "number"
-                        ? product.totalStock > 0
-                          ? "In Stock"
-                          : "Out of Stock"
-                        : product.inStock !== false
-                        ? "In Stock"
+                      currentStock > 0
+                        ? `In Stock (${currentStock} available)`
                         : "Out of Stock"
                     }
                     icon={<Verified />}
                     className={`stock-chip ${
-                      typeof product.totalStock === "number"
-                        ? product.totalStock > 0
-                          ? "in-stock"
-                          : "out-of-stock"
-                        : product.inStock !== false
-                        ? "in-stock"
-                        : "out-of-stock"
+                      currentStock > 0 ? "in-stock" : "out-of-stock"
                     }`}
                   />
                 </Box>
@@ -336,6 +385,7 @@ const ProductDetail = () => {
                   basePrice={product.basePrice}
                   discountPrice={product.discountPrice}
                   discountPercent={product.discountPercent}
+                  currentPrice={currentPrice}
                 />
 
                 {product.shortDescription && (
@@ -343,28 +393,50 @@ const ProductDetail = () => {
                     {product.shortDescription}
                   </Typography>
                 )}
-                {product.description && (
-                  <Typography
-                    className="product-description"
-                    sx={{ whiteSpace: "pre-line" }}
-                  >
-                    {product.description}
-                  </Typography>
-                )}
 
                 <Divider sx={{ my: 3 }} />
 
+                {/* Variants */}
+                {variants.length > 0 && (
+                  <Box sx={{ mb: 2 }}>
+                    <Typography sx={{ fontWeight: 700, mb: 1 }}>
+                      Choose variant
+                    </Typography>
+                    <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+                      {variants.map((v) => (
+                        <Button
+                          key={v.id}
+                          size="small"
+                          variant={
+                            selectedVariant?.id === v.id
+                              ? "contained"
+                              : "outlined"
+                          }
+                          onClick={() => handleVariantChange(v)}
+                          disabled={Number(v.stock ?? 0) <= 0}
+                          sx={{
+                            borderRadius: 2,
+                            textTransform: "none",
+                            minWidth: 110,
+                          }}
+                        >
+                          {v.color?.name || ""}{" "}
+                          {v.size?.name ? ` / ${v.size.name}` : ""}
+                          {Number(v.stock ?? 0) <= 0 ? " — Out" : ""}
+                        </Button>
+                      ))}
+                    </Box>
+                  </Box>
+                )}
+
+                {/* Actions */}
                 <Box className="action-buttons">
                   <Button
                     variant="contained"
                     size="large"
                     startIcon={<AddShoppingCart />}
                     onClick={handleAddToCart}
-                    disabled={
-                      typeof product.totalStock === "number"
-                        ? product.totalStock <= 0
-                        : product.inStock === false
-                    }
+                    disabled={currentStock <= 0}
                     className="add-to-cart-btn"
                   >
                     Add to Cart
@@ -374,11 +446,7 @@ const ProductDetail = () => {
                     size="large"
                     startIcon={<ShoppingBag />}
                     onClick={handleBuyNow}
-                    disabled={
-                      typeof product.totalStock === "number"
-                        ? product.totalStock <= 0
-                        : product.inStock === false
-                    }
+                    disabled={currentStock <= 0}
                     className="buy-now-btn"
                   >
                     Buy Now
@@ -405,7 +473,7 @@ const ProductDetail = () => {
                       Free Delivery
                     </Typography>
                     <Typography className="delivery-text">
-                      Delivered in 2-3 business days
+                      Delivered in 2–3 business days
                     </Typography>
                   </Box>
                 </Paper>
@@ -414,131 +482,37 @@ const ProductDetail = () => {
           </Grid>
         </Paper>
 
-        <Paper className="tabs-section">
-          <Tabs
-            value={tabValue}
-            onChange={(e, v) => setTabValue(v)}
-            className="product-tabs"
+        {/* Rating Input */}
+        <Paper className="user-rating-section" sx={{ p: 3, mt: 4 }}>
+          <Typography variant="h6" sx={{ mb: 1 }}>
+            Leave a rating
+          </Typography>
+          <Rating
+            value={userRating}
+            precision={0.5}
+            onChange={(e, val) => setUserRating(val)}
+            size="large"
+            icon={<Star fontSize="inherit" />}
+          />
+          <TextField
+            fullWidth
+            placeholder="Write a short review..."
+            multiline
+            rows={3}
+            value={ratingComment}
+            onChange={(e) => setRatingComment(e.target.value)}
+            sx={{ mt: 2 }}
+          />
+          <Button
+            variant="contained"
+            sx={{ mt: 2 }}
+            onClick={handleSubmitRating}
           >
-            <Tab label="Description" />
-            <Tab label="Specifications" />
-            <Tab label={`Reviews (${product.comments?.length || 0})`} />
-          </Tabs>
-
-          <Box className="tab-content">
-            {tabValue === 0 && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                <Typography className="tab-text">
-                  {product.description || "No description"}
-                </Typography>
-                {product.features?.length > 0 && (
-                  <Box sx={{ mt: 3 }}>
-                    <Typography variant="h6" className="features-title">
-                      Product Features
-                    </Typography>
-                    <ul className="features-list">
-                      {product.features.map((f, i) => (
-                        <li key={i}>{f}</li>
-                      ))}
-                    </ul>
-                  </Box>
-                )}
-              </motion.div>
-            )}
-
-            {tabValue === 1 && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                {product.specifications ? (
-                  <Grid container spacing={2}>
-                    {Object.entries(product.specifications).map(([k, v]) => (
-                      <Grid item xs={12} sm={6} key={k}>
-                        <Box className="spec-item">
-                          <Typography className="spec-key">{k}</Typography>
-                          <Typography className="spec-value">
-                            {String(v)}
-                          </Typography>
-                        </Box>
-                      </Grid>
-                    ))}
-                  </Grid>
-                ) : (
-                  <Typography className="no-data">
-                    Specifications not available
-                  </Typography>
-                )}
-              </motion.div>
-            )}
-
-            {tabValue === 2 && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                {product.comments && product.comments.length > 0 ? (
-                  <>
-                    <Box className="rating-summary">
-                      <Typography className="rating-number">
-                        {(product.rating || 0).toFixed(1)}
-                      </Typography>
-                      <Box>
-                        <Rating
-                          value={product.rating || 0}
-                          precision={0.1}
-                          readOnly
-                        />
-                        <Typography className="reviews-count">
-                          {product.reviews || 0} reviews
-                        </Typography>
-                      </Box>
-                    </Box>
-
-                    <Box className="reviews-list">
-                      {product.comments.map((c, idx) => (
-                        <Paper key={c.id || idx} className="review-card">
-                          <Box className="review-header">
-                            <Avatar className="review-avatar">
-                              {(c.user || "?").charAt(0)}
-                            </Avatar>
-                            <Box className="review-user-info">
-                              <Typography className="review-username">
-                                {c.user || "User"}
-                              </Typography>
-                              <Box className="review-rating-date">
-                                <Rating
-                                  value={c.rating || 0}
-                                  size="small"
-                                  readOnly
-                                />
-                                <Typography className="review-date">
-                                  {c.date
-                                    ? new Date(c.date).toLocaleDateString(
-                                        "en-IN"
-                                      )
-                                    : ""}
-                                </Typography>
-                              </Box>
-                            </Box>
-                            <Chip
-                              label="Verified"
-                              icon={<Verified />}
-                              className="verified-chip"
-                            />
-                          </Box>
-                          <Typography className="review-comment">
-                            {c.comment || ""}
-                          </Typography>
-                        </Paper>
-                      ))}
-                    </Box>
-                  </>
-                ) : (
-                  <Box className="no-reviews">
-                    <Typography variant="h6">No reviews yet</Typography>
-                    <Typography>Be the first to review!</Typography>
-                  </Box>
-                )}
-              </motion.div>
-            )}
-          </Box>
+            Submit Review
+          </Button>
         </Paper>
 
+        {/* Related Products */}
         {related.length > 0 && (
           <Box className="related-products-section">
             <Typography variant="h5" className="related-title">
@@ -554,6 +528,7 @@ const ProductDetail = () => {
           </Box>
         )}
 
+        {/* Zoom Modal */}
         <Modal
           open={zoomModalOpen}
           onClose={() => setZoomModalOpen(false)}
@@ -575,19 +550,6 @@ const ProductDetail = () => {
                 className="zoom-modal-image"
               />
             )}
-            <Box className="zoom-modal-thumbnails">
-              {gallery.map((img, index) => (
-                <Box
-                  key={index}
-                  className={`modal-thumbnail ${
-                    selectedImage === index ? "active" : ""
-                  }`}
-                  onClick={() => setSelectedImage(index)}
-                >
-                  <img src={img} alt={`Thumb ${index + 1}`} />
-                </Box>
-              ))}
-            </Box>
           </Box>
         </Modal>
       </Container>

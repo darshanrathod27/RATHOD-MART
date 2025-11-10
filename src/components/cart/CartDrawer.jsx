@@ -1,3 +1,4 @@
+// src/components/cart/CartDrawer.jsx
 import React from "react";
 import {
   Drawer,
@@ -145,7 +146,7 @@ const CartDrawer = () => {
           <AnimatePresence>
             {cartItems.map((item) => (
               <motion.div
-                key={item.id}
+                key={item.cartId || item.id}
                 layout
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -194,12 +195,30 @@ const CartDrawer = () => {
                       >
                         {item.name}
                       </Typography>
+
+                      {/* Variant info (color / size) */}
+                      {item.selectedVariant && (
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            color: "text.secondary",
+                            display: "block",
+                            mb: 1,
+                          }}
+                        >
+                          {item.selectedVariant.color || ""}{" "}
+                          {item.selectedVariant.size
+                            ? ` / ${item.selectedVariant.size}`
+                            : ""}
+                        </Typography>
+                      )}
+
                       <Box sx={{ display: "flex", gap: 1, mb: 1 }}>
                         <Typography
                           variant="h6"
                           sx={{ color: "#2E7D32", fontWeight: 800 }}
                         >
-                          ₹{item.price?.toFixed(2)}
+                          ₹{Number(item.price || 0).toFixed(2)}
                         </Typography>
                         {item.discount > 0 && (
                           <Chip
@@ -210,6 +229,7 @@ const CartDrawer = () => {
                           />
                         )}
                       </Box>
+
                       <Box
                         sx={{
                           display: "flex",
@@ -230,7 +250,7 @@ const CartDrawer = () => {
                           <IconButton
                             size="small"
                             onClick={() =>
-                              updateQuantity(item.id, item.quantity - 1)
+                              updateQuantity(item.cartId, item.quantity - 1)
                             }
                             sx={{
                               color: "#2E7D32",
@@ -253,7 +273,7 @@ const CartDrawer = () => {
                           <IconButton
                             size="small"
                             onClick={() =>
-                              updateQuantity(item.id, item.quantity + 1)
+                              updateQuantity(item.cartId, item.quantity + 1)
                             }
                             sx={{
                               color: "#fff",
@@ -266,7 +286,7 @@ const CartDrawer = () => {
                         </Box>
                         <IconButton
                           size="small"
-                          onClick={() => removeFromCart(item.id)}
+                          onClick={() => removeFromCart(item.cartId)}
                           sx={{
                             color: "error.main",
                             "&:hover": {
