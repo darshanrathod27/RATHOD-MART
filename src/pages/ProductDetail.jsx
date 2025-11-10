@@ -1,4 +1,11 @@
-import React, { useState, useRef, useCallback } from "react";
+// src/pages/ProductDetail.jsx
+import React, {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+  useMemo,
+} from "react";
 import {
   Box,
   Container,
@@ -32,12 +39,37 @@ import {
 } from "@mui/icons-material";
 import { motion } from "framer-motion";
 import { useParams, useNavigate } from "react-router-dom";
-import { products } from "../data/products";
 import { useCart } from "../context/CartContext";
 import { useWishlist } from "../context/WishlistContext";
 import toast from "react-hot-toast";
 import ProductCard from "../components/home/ProductCard";
+import api from "../data/api";
 import "./ProductDetail.css";
+
+const PriceBlock = ({ basePrice, discountPrice, discountPercent }) => {
+  const hasDiscount =
+    typeof discountPrice === "number" &&
+    discountPrice > 0 &&
+    discountPrice < basePrice;
+  return (
+    <Box className="price-section">
+      <Typography className="current-price">
+        ₹{(hasDiscount ? discountPrice : basePrice)?.toLocaleString()}
+      </Typography>
+      {hasDiscount && (
+        <>
+          <Typography className="original-price">
+            ₹{basePrice?.toLocaleString()}
+          </Typography>
+          <Chip
+            label={`${discountPercent || 0}% OFF`}
+            className="discount-chip"
+          />
+        </>
+      )}
+    </Box>
+  );
+};
 
 const ProductDetail = () => {
   const { id } = useParams();
@@ -45,40 +77,83 @@ const ProductDetail = () => {
   const { addToCart } = useCart();
   const { toggleWishlist, isItemInWishlist } = useWishlist();
 
-  const product = products.find((p) => p.id === parseInt(id)) || products[0];
-  const isFavorite = isItemInWishlist(product.id);
+  const [product, setProduct] = useState(null);
+  const [related, setRelated] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState(null);
 
   const [selectedImage, setSelectedImage] = useState(0);
   const [tabValue, setTabValue] = useState(0);
   const [zoomModalOpen, setZoomModalOpen] = useState(false);
   const [mousePosition, setMousePosition] = useState({ x: 50, y: 50 });
   const [isHovering, setIsHovering] = useState(false);
-
   const imageRef = useRef(null);
 
-  // Get related products
-  const relatedProducts = products
-    .filter((p) => p.category === product.category && p.id !== product.id)
-    .slice(0, 4);
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      setLoading(true);
+      setErr(null);
+      try {
+        const data = await api.fetchProductById(id);
+        if (!mounted) return;
+
+        setProduct(data);
+
+        const catId = data?.category?._id || data?.category || null;
+        if (catId) {
+          const rel = await api.fetchProducts({ category: catId, limit: 12 });
+          setRelated(rel.filter((p) => p.id !== data.id).slice(0, 4));
+        } else {
+          setRelated([]);
+        }
+
+        setSelectedImage(0);
+      } catch (e) {
+        if (!mounted) return;
+        setErr("Product not found");
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [id]);
+
+  const gallery = useMemo(() => {
+    if (!product) return [];
+    if (Array.isArray(product.images) && product.images.length) {
+      return product.images
+        .map((img) => img.fullUrl || img.url || product.image)
+        .filter(Boolean);
+    }
+    return product.image ? [product.image] : [];
+  }, [product]);
+
+  const isFavorite = product ? isItemInWishlist(product.id) : false;
 
   const handleAddToCart = () => {
+    if (!product) return;
     addToCart(product);
     toast.success(`${product.name} added to cart!`, {
       icon: "🛒",
-      style: { background: "#2E7D32", color: "#fff", fontWeight: "600" },
+      style: { background: "#2E7D32", color: "#fff", fontWeight: 600 },
     });
   };
 
   const handleBuyNow = () => {
+    if (!product) return;
     addToCart(product);
     navigate("/checkout");
     toast.success("Proceeding to checkout!", {
       icon: "🚀",
-      style: { background: "#FF9800", color: "#fff", fontWeight: "600" },
+      style: { background: "#FF9800", color: "#fff", fontWeight: 600 },
     });
   };
 
   const handleFavoriteToggle = () => {
+    if (!product) return;
     toggleWishlist(product);
     toast.success(isFavorite ? "Removed from wishlist" : "Added to wishlist!", {
       icon: isFavorite ? "💔" : "❤️",
@@ -87,24 +162,35 @@ const ProductDetail = () => {
 
   const handleMouseMove = useCallback((e) => {
     if (!imageRef.current) return;
-
     const rect = imageRef.current.getBoundingClientRect();
     const x = ((e.clientX - rect.left) / rect.width) * 100;
     const y = ((e.clientY - rect.top) / rect.height) * 100;
-
-    const clampedX = Math.max(0, Math.min(100, x));
-    const clampedY = Math.max(0, Math.min(100, y));
-
-    setMousePosition({ x: clampedX, y: clampedY });
+    setMousePosition({
+      x: Math.max(0, Math.min(100, x)),
+      y: Math.max(0, Math.min(100, y)),
+    });
   }, []);
 
-  const productImages = product.images || [product.image];
-  const currentImage = productImages[selectedImage];
+  if (loading) {
+    return (
+      <Container sx={{ py: 10 }}>
+        <Typography>Loading product…</Typography>
+      </Container>
+    );
+  }
+  if (err || !product) {
+    return (
+      <Container sx={{ py: 10 }}>
+        <Typography color="error">{err || "Error loading product"}</Typography>
+      </Container>
+    );
+  }
+
+  const currentImage = gallery[selectedImage];
 
   return (
     <Box className="product-detail-page">
       <Container maxWidth="xl">
-        {/* Breadcrumbs */}
         <Breadcrumbs
           separator={<NavigateNext fontSize="small" />}
           className="breadcrumbs"
@@ -113,16 +199,23 @@ const ProductDetail = () => {
             <Home sx={{ mr: 0.5, fontSize: "1.2rem" }} />
             Home
           </Link>
-          <Link
-            component="button"
-            onClick={() => navigate(`/products?category=${product.category}`)}
-          >
-            {product.category}
-          </Link>
+          {product.category?.name && (
+            <Link
+              component="button"
+              onClick={() =>
+                navigate(
+                  `/products?category=${
+                    product.category._id || product.category
+                  }`
+                )
+              }
+            >
+              {product.category.name}
+            </Link>
+          )}
           <Typography className="breadcrumb-active">{product.name}</Typography>
         </Breadcrumbs>
 
-        {/* Main Product Section */}
         <Paper
           component={motion.div}
           initial={{ opacity: 0, y: 20 }}
@@ -130,14 +223,12 @@ const ProductDetail = () => {
           className="product-main-section"
         >
           <Grid container>
-            {/* Image Gallery */}
             <Grid item xs={12} md={6}>
               <Box className="product-gallery">
                 {product.badge && (
                   <Chip label={product.badge} className="product-badge" />
                 )}
 
-                {/* Main Image with Zoom */}
                 <Box
                   ref={imageRef}
                   className="main-image-container"
@@ -146,14 +237,17 @@ const ProductDetail = () => {
                   onMouseLeave={() => setIsHovering(false)}
                   onClick={() => setZoomModalOpen(true)}
                 >
-                  <img
-                    src={currentImage}
-                    alt={product.name}
-                    className="main-product-image"
-                  />
+                  {currentImage ? (
+                    <img
+                      src={currentImage}
+                      alt={product.name}
+                      className="main-product-image"
+                    />
+                  ) : (
+                    <Typography>No Image</Typography>
+                  )}
 
-                  {/* Zoom Lens */}
-                  {isHovering && (
+                  {isHovering && currentImage && (
                     <Box
                       className="zoom-lens"
                       style={{
@@ -164,8 +258,7 @@ const ProductDetail = () => {
                   )}
                 </Box>
 
-                {/* Side Zoom Display */}
-                {isHovering && (
+                {isHovering && currentImage && (
                   <Box className="side-zoom-display">
                     <Box
                       className="zoomed-image"
@@ -179,9 +272,8 @@ const ProductDetail = () => {
                   </Box>
                 )}
 
-                {/* Thumbnail Gallery */}
                 <Box className="thumbnail-gallery">
-                  {productImages.map((img, index) => (
+                  {gallery.map((img, index) => (
                     <Box
                       key={index}
                       className={`thumbnail ${
@@ -196,86 +288,83 @@ const ProductDetail = () => {
               </Box>
             </Grid>
 
-            {/* Product Info */}
             <Grid item xs={12} md={6}>
               <Box className="product-info">
-                <Typography className="product-brand">
-                  {product.brand}
-                </Typography>
+                {product.brand && (
+                  <Typography className="product-brand">
+                    {product.brand}
+                  </Typography>
+                )}
                 <Typography variant="h4" className="product-title">
                   {product.name}
                 </Typography>
 
                 <Box className="rating-section">
-                  <Rating value={product.rating} precision={0.1} readOnly />
+                  <Rating
+                    value={product.rating || 0}
+                    precision={0.1}
+                    readOnly
+                  />
                   <Typography className="rating-text">
-                    {product.rating} ({product.reviews} reviews)
+                    {(product.rating || 0).toFixed(1)} ({product.reviews || 0}{" "}
+                    reviews)
                   </Typography>
                   <Chip
-                    label={product.inStock ? "In Stock" : "Out of Stock"}
+                    label={
+                      typeof product.totalStock === "number"
+                        ? product.totalStock > 0
+                          ? "In Stock"
+                          : "Out of Stock"
+                        : product.inStock !== false
+                        ? "In Stock"
+                        : "Out of Stock"
+                    }
                     icon={<Verified />}
                     className={`stock-chip ${
-                      product.inStock ? "in-stock" : "out-of-stock"
+                      typeof product.totalStock === "number"
+                        ? product.totalStock > 0
+                          ? "in-stock"
+                          : "out-of-stock"
+                        : product.inStock !== false
+                        ? "in-stock"
+                        : "out-of-stock"
                     }`}
                   />
                 </Box>
 
-                <Box className="price-section">
-                  <Typography className="current-price">
-                    ₹{product.price.toLocaleString()}
+                <PriceBlock
+                  basePrice={product.basePrice}
+                  discountPrice={product.discountPrice}
+                  discountPercent={product.discountPercent}
+                />
+
+                {product.shortDescription && (
+                  <Typography className="product-description">
+                    {product.shortDescription}
                   </Typography>
-                  {product.originalPrice && (
-                    <>
-                      <Typography className="original-price">
-                        ₹{product.originalPrice.toLocaleString()}
-                      </Typography>
-                      {product.discount && (
-                        <Chip
-                          label={`${product.discount}% OFF`}
-                          className="discount-chip"
-                        />
-                      )}
-                    </>
-                  )}
-                </Box>
-
-                <Typography className="tax-info">
-                  Inclusive of all taxes
-                </Typography>
-                <Divider sx={{ my: 3 }} />
-
-                <Typography className="product-description">
-                  {product.description}
-                </Typography>
-
-                {/* Key Features */}
-                {product.features && (
-                  <Box className="features-section">
-                    <Typography className="section-title">
-                      Key Features
-                    </Typography>
-                    <Box className="features-chips">
-                      {product.features.map((feature, idx) => (
-                        <Chip
-                          key={idx}
-                          label={feature}
-                          className="feature-chip"
-                        />
-                      ))}
-                    </Box>
-                  </Box>
+                )}
+                {product.description && (
+                  <Typography
+                    className="product-description"
+                    sx={{ whiteSpace: "pre-line" }}
+                  >
+                    {product.description}
+                  </Typography>
                 )}
 
                 <Divider sx={{ my: 3 }} />
 
-                {/* Action Buttons */}
                 <Box className="action-buttons">
                   <Button
                     variant="contained"
                     size="large"
                     startIcon={<AddShoppingCart />}
                     onClick={handleAddToCart}
-                    disabled={!product.inStock}
+                    disabled={
+                      typeof product.totalStock === "number"
+                        ? product.totalStock <= 0
+                        : product.inStock === false
+                    }
                     className="add-to-cart-btn"
                   >
                     Add to Cart
@@ -285,7 +374,11 @@ const ProductDetail = () => {
                     size="large"
                     startIcon={<ShoppingBag />}
                     onClick={handleBuyNow}
-                    disabled={!product.inStock}
+                    disabled={
+                      typeof product.totalStock === "number"
+                        ? product.totalStock <= 0
+                        : product.inStock === false
+                    }
                     className="buy-now-btn"
                   >
                     Buy Now
@@ -305,7 +398,6 @@ const ProductDetail = () => {
                   </IconButton>
                 </Box>
 
-                {/* Delivery Info */}
                 <Paper className="delivery-info">
                   <LocalShipping className="delivery-icon" />
                   <Box>
@@ -322,11 +414,10 @@ const ProductDetail = () => {
           </Grid>
         </Paper>
 
-        {/* Tabs Section */}
         <Paper className="tabs-section">
           <Tabs
             value={tabValue}
-            onChange={(e, newValue) => setTabValue(newValue)}
+            onChange={(e, v) => setTabValue(v)}
             className="product-tabs"
           >
             <Tab label="Description" />
@@ -338,16 +429,16 @@ const ProductDetail = () => {
             {tabValue === 0 && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                 <Typography className="tab-text">
-                  {product.description}
+                  {product.description || "No description"}
                 </Typography>
-                {product.features && (
+                {product.features?.length > 0 && (
                   <Box sx={{ mt: 3 }}>
                     <Typography variant="h6" className="features-title">
                       Product Features
                     </Typography>
                     <ul className="features-list">
-                      {product.features.map((feature, idx) => (
-                        <li key={idx}>{feature}</li>
+                      {product.features.map((f, i) => (
+                        <li key={i}>{f}</li>
                       ))}
                     </ul>
                   </Box>
@@ -359,18 +450,16 @@ const ProductDetail = () => {
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                 {product.specifications ? (
                   <Grid container spacing={2}>
-                    {Object.entries(product.specifications).map(
-                      ([key, value]) => (
-                        <Grid item xs={12} sm={6} key={key}>
-                          <Box className="spec-item">
-                            <Typography className="spec-key">{key}</Typography>
-                            <Typography className="spec-value">
-                              {value}
-                            </Typography>
-                          </Box>
-                        </Grid>
-                      )
-                    )}
+                    {Object.entries(product.specifications).map(([k, v]) => (
+                      <Grid item xs={12} sm={6} key={k}>
+                        <Box className="spec-item">
+                          <Typography className="spec-key">{k}</Typography>
+                          <Typography className="spec-value">
+                            {String(v)}
+                          </Typography>
+                        </Box>
+                      </Grid>
+                    ))}
                   </Grid>
                 ) : (
                   <Typography className="no-data">
@@ -386,41 +475,43 @@ const ProductDetail = () => {
                   <>
                     <Box className="rating-summary">
                       <Typography className="rating-number">
-                        {product.rating}
+                        {(product.rating || 0).toFixed(1)}
                       </Typography>
                       <Box>
                         <Rating
-                          value={product.rating}
+                          value={product.rating || 0}
                           precision={0.1}
                           readOnly
                         />
                         <Typography className="reviews-count">
-                          {product.reviews} reviews
+                          {product.reviews || 0} reviews
                         </Typography>
                       </Box>
                     </Box>
 
                     <Box className="reviews-list">
-                      {product.comments.map((comment) => (
-                        <Paper key={comment.id} className="review-card">
+                      {product.comments.map((c, idx) => (
+                        <Paper key={c.id || idx} className="review-card">
                           <Box className="review-header">
                             <Avatar className="review-avatar">
-                              {comment.user.charAt(0)}
+                              {(c.user || "?").charAt(0)}
                             </Avatar>
                             <Box className="review-user-info">
                               <Typography className="review-username">
-                                {comment.user}
+                                {c.user || "User"}
                               </Typography>
                               <Box className="review-rating-date">
                                 <Rating
-                                  value={comment.rating}
+                                  value={c.rating || 0}
                                   size="small"
                                   readOnly
                                 />
                                 <Typography className="review-date">
-                                  {new Date(comment.date).toLocaleDateString(
-                                    "en-IN"
-                                  )}
+                                  {c.date
+                                    ? new Date(c.date).toLocaleDateString(
+                                        "en-IN"
+                                      )
+                                    : ""}
                                 </Typography>
                               </Box>
                             </Box>
@@ -431,7 +522,7 @@ const ProductDetail = () => {
                             />
                           </Box>
                           <Typography className="review-comment">
-                            {comment.comment}
+                            {c.comment || ""}
                           </Typography>
                         </Paper>
                       ))}
@@ -448,29 +539,27 @@ const ProductDetail = () => {
           </Box>
         </Paper>
 
-        {/* Related Products */}
-        {relatedProducts.length > 0 && (
+        {related.length > 0 && (
           <Box className="related-products-section">
             <Typography variant="h5" className="related-title">
               Related Products
             </Typography>
             <Grid container spacing={3}>
-              {relatedProducts.map((relProduct) => (
-                <Grid item xs={12} sm={6} md={3} key={relProduct.id}>
-                  <ProductCard product={relProduct} />
+              {related.map((p) => (
+                <Grid item xs={12} sm={6} md={3} key={p.id}>
+                  <ProductCard product={p} />
                 </Grid>
               ))}
             </Grid>
           </Box>
         )}
 
-        {/* Zoom Modal */}
         <Modal
           open={zoomModalOpen}
           onClose={() => setZoomModalOpen(false)}
           closeAfterTransition
           BackdropComponent={Backdrop}
-          BackdropProps={{ timeout: 500 }}
+          BackdropProps={{ timeout: 400 }}
         >
           <Box className="zoom-modal">
             <IconButton
@@ -479,13 +568,15 @@ const ProductDetail = () => {
             >
               <Close />
             </IconButton>
-            <img
-              src={currentImage}
-              alt={product.name}
-              className="zoom-modal-image"
-            />
+            {currentImage && (
+              <img
+                src={currentImage}
+                alt={product.name}
+                className="zoom-modal-image"
+              />
+            )}
             <Box className="zoom-modal-thumbnails">
-              {productImages.map((img, index) => (
+              {gallery.map((img, index) => (
                 <Box
                   key={index}
                   className={`modal-thumbnail ${

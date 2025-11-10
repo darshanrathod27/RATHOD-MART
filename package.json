@@ -12,7 +12,7 @@
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^13.5.0",
     "aos": "^2.3.4",
-    "axios": "^1.12.2",
+    "axios": "^1.13.2",
     "formik": "^2.4.6",
     "framer-motion": "^10.18.0",
     "lottie-react": "^2.4.0",

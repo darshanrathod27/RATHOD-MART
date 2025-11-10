@@ -1,13 +1,41 @@
-import React, { useRef } from "react";
+// src/components/home/FeaturedProducts.jsx
+import React, { useEffect, useRef, useState } from "react";
 import { Box, Container, Typography, Grid } from "@mui/material";
 import { motion, useInView } from "framer-motion";
-import { products } from "../../data/products";
 import ProductCard from "./ProductCard";
 import "./ProductAnimations.css";
+import api from "../../data/api";
 
 const FeaturedProducts = () => {
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true });
+
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      setLoading(true);
+      setErr(null);
+      try {
+        // fetch only featured from backend
+        const data = await api.fetchProducts({
+          featured: "true",
+          limit: 24,
+          sortBy: "createdAt",
+          sortOrder: "desc",
+        });
+        if (mounted) setProducts(data);
+      } catch (e) {
+        if (mounted) setErr("Failed to load featured products");
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => (mounted = false);
+  }, []);
 
   return (
     <Box
@@ -49,19 +77,34 @@ const FeaturedProducts = () => {
           </Typography>
         </Box>
 
-        <Grid container spacing={3}>
-          {products.map((product, index) => (
-            <Grid item xs={12} sm={6} md={4} lg={3} key={product.id}>
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={isInView ? { opacity: 1, y: 0 } : {}}
-                transition={{ duration: 0.3, delay: index * 0.05 }}
-              >
-                <ProductCard product={product} />
-              </motion.div>
-            </Grid>
-          ))}
-        </Grid>
+        {/* States */}
+        {loading ? (
+          <Box sx={{ textAlign: "center", py: 8 }}>
+            <Typography>Loading…</Typography>
+          </Box>
+        ) : err ? (
+          <Box sx={{ textAlign: "center", py: 8 }}>
+            <Typography color="error">{err}</Typography>
+          </Box>
+        ) : products.length === 0 ? (
+          <Box sx={{ textAlign: "center", py: 8 }}>
+            <Typography>No featured products available.</Typography>
+          </Box>
+        ) : (
+          <Grid container spacing={3}>
+            {products.map((product, index) => (
+              <Grid item xs={12} sm={6} md={4} lg={3} key={product.id}>
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={isInView ? { opacity: 1, y: 0 } : {}}
+                  transition={{ duration: 0.3, delay: index * 0.05 }}
+                >
+                  <ProductCard product={product} />
+                </motion.div>
+              </Grid>
+            ))}
+          </Grid>
+        )}
       </Container>
     </Box>
   );

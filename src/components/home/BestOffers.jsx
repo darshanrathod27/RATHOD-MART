@@ -1,17 +1,59 @@
-import React, { useRef } from "react";
+// src/components/home/BestOffers.jsx
+import React, { useRef, useEffect, useState } from "react";
 import { Box, Container, Typography } from "@mui/material";
 import { motion, useInView } from "framer-motion";
 import { Swiper, SwiperSlide } from "swiper/react";
 import { Autoplay, Navigation } from "swiper/modules";
 import "swiper/css";
 import "swiper/css/navigation";
-import { offerProducts } from "../../data/products";
 import ProductCard from "./ProductCard";
 import "./BestOffers.css";
+import api from "../../data/api";
+
+const MIN_DISCOUNT = 40; // show products with discountPercent >= this
 
 const BestOffers = () => {
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, margin: "-80px" });
+
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        // Try server-side offer endpoint first (if available),
+        // otherwise fetch many and filter client-side
+        let offers = [];
+        try {
+          offers = await api.fetchOfferProducts({
+            minDiscount: MIN_DISCOUNT,
+            limit: 48,
+          });
+        } catch (e) {
+          // fallback
+          const all = await api.fetchProducts({ limit: 48 });
+          offers = all.filter((p) => (p.discountPercent || 0) >= MIN_DISCOUNT);
+        }
+
+        if (mounted) {
+          setProducts(offers);
+        }
+      } catch (err) {
+        console.error("BestOffers error:", err);
+        if (mounted) setError("Failed to load offers");
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    load();
+    return () => (mounted = false);
+  }, []);
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -60,7 +102,6 @@ const BestOffers = () => {
       variants={containerVariants}
       sx={{ py: 6 }}
     >
-      {/* Premium Header Section - Full Width */}
       <motion.div variants={headerVariants}>
         <Box className="best-offers-header-wrapper">
           <Box className="best-offers-header">
@@ -73,87 +114,98 @@ const BestOffers = () => {
       </motion.div>
 
       <Container maxWidth="xl">
-        {/* Products Carousel Container */}
         <motion.div variants={containerVariants}>
           <Box className="best-offers-carousel-container">
-            <Swiper
-              modules={[Autoplay, Navigation]}
-              spaceBetween={20}
-              slidesPerView="auto"
-              loop={true}
-              autoplay={{
-                delay: 3000,
-                disableOnInteraction: false,
-                pauseOnMouseEnter: true,
-              }}
-              speed={800}
-              navigation={{
-                nextEl: ".swiper-button-next-custom",
-                prevEl: ".swiper-button-prev-custom",
-              }}
-              grabCursor={true}
-              className="best-offers-swiper"
-              breakpoints={{
-                320: {
-                  slidesPerView: 1.2,
-                  spaceBetween: 15,
-                },
-                480: {
-                  slidesPerView: 1.5,
-                  spaceBetween: 15,
-                },
-                640: {
-                  slidesPerView: 2.2,
-                  spaceBetween: 18,
-                },
-                768: {
-                  slidesPerView: 2.8,
-                  spaceBetween: 18,
-                },
-                1024: {
-                  slidesPerView: 4,
-                  spaceBetween: 20,
-                },
-                1200: {
-                  slidesPerView: 5,
-                  spaceBetween: 20,
-                },
-                1400: {
-                  slidesPerView: 6,
-                  spaceBetween: 20,
-                },
-              }}
-            >
-              {offerProducts.map((product, index) => (
-                <SwiperSlide key={product.id} className="best-offer-slide">
-                  <motion.div
-                    variants={itemVariants}
-                    whileHover={{
-                      scale: 1.05,
-                      transition: { duration: 0.3 },
-                    }}
-                    className="product-card-wrapper"
-                  >
-                    {/* Discount Ribbon */}
-                    <div className="discount-ribbon">
-                      <span>
-                        {product.discount}%
-                        <br />
-                        OFF
-                      </span>
-                    </div>
+            {loading ? (
+              <Box sx={{ textAlign: "center", py: 8 }}>
+                <Typography>Loading offers...</Typography>
+              </Box>
+            ) : error ? (
+              <Box sx={{ textAlign: "center", py: 8 }}>
+                <Typography color="error">{error}</Typography>
+              </Box>
+            ) : products.length === 0 ? (
+              <Box sx={{ textAlign: "center", py: 8 }}>
+                <Typography>No offers right now. Check back later!</Typography>
+              </Box>
+            ) : (
+              <Swiper
+                modules={[Autoplay, Navigation]}
+                spaceBetween={20}
+                slidesPerView="auto"
+                loop={true}
+                autoplay={{
+                  delay: 3000,
+                  disableOnInteraction: false,
+                  pauseOnMouseEnter: true,
+                }}
+                speed={800}
+                navigation={{
+                  nextEl: ".swiper-button-next-custom",
+                  prevEl: ".swiper-button-prev-custom",
+                }}
+                grabCursor={true}
+                className="best-offers-swiper"
+                breakpoints={{
+                  320: {
+                    slidesPerView: 1.2,
+                    spaceBetween: 15,
+                  },
+                  480: {
+                    slidesPerView: 1.5,
+                    spaceBetween: 15,
+                  },
+                  640: {
+                    slidesPerView: 2.2,
+                    spaceBetween: 18,
+                  },
+                  768: {
+                    slidesPerView: 2.8,
+                    spaceBetween: 18,
+                  },
+                  1024: {
+                    slidesPerView: 4,
+                    spaceBetween: 20,
+                  },
+                  1200: {
+                    slidesPerView: 5,
+                    spaceBetween: 20,
+                  },
+                  1400: {
+                    slidesPerView: 6,
+                    spaceBetween: 20,
+                  },
+                }}
+              >
+                {products.map((product) => (
+                  <SwiperSlide key={product.id} className="best-offer-slide">
+                    <motion.div
+                      variants={itemVariants}
+                      whileHover={{
+                        scale: 1.05,
+                        transition: { duration: 0.3 },
+                      }}
+                      className="product-card-wrapper"
+                    >
+                      {/* Discount Ribbon (computed discountPercent) */}
+                      <div className="discount-ribbon">
+                        <span>
+                          {product.discountPercent || 0}
+                          <br />% OFF
+                        </span>
+                      </div>
 
-                    {/* Product Card - 223 x 303 */}
-                    <ProductCard
-                      product={product}
-                      isOfferCard={true}
-                      hideDiscountChip={true}
-                      isCompact={true}
-                    />
-                  </motion.div>
-                </SwiperSlide>
-              ))}
-            </Swiper>
+                      <ProductCard
+                        product={product}
+                        isOfferCard={true}
+                        hideDiscountChip={true}
+                        isCompact={true}
+                      />
+                    </motion.div>
+                  </SwiperSlide>
+                ))}
+              </Swiper>
+            )}
 
             {/* Custom Navigation Buttons */}
             <div className="swiper-button-prev-custom">‹</div>
