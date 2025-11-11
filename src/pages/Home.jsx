@@ -1,4 +1,4 @@
-// src/pages/Home.jsx
+// rathod-mart/src/pages/Home.jsx
 import React, { useState, useMemo, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Box, Container, Typography, Grid, Fab, Chip } from "@mui/material";
@@ -37,15 +37,13 @@ const Home = () => {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(null);
 
-  // Smooth-scroll to a section when navigated with { state: { scrollTo: 'id' } }
+  // Smooth-scroll to a section (Unchanged, this logic is correct)
   useEffect(() => {
     if (location.state?.scrollTo) {
       const sectionId = location.state.scrollTo;
-      // Wait a tick so the DOM is ready (esp. after route change)
       const t = setTimeout(() => {
         const section = document.getElementById(sectionId);
         if (section) section.scrollIntoView({ behavior: "smooth" });
-        // Clear state so refresh/back doesn't re-trigger
         navigate(location.pathname, { replace: true, state: {} });
       }, 120);
 
@@ -170,11 +168,10 @@ const Home = () => {
         <Brands />
         <BestOffers />
         <Categories />
+        {/* TrendingProducts removed to fix undefined component error */}
 
-        {/* --- CHANGE HERE --- */}
+        {/* Featured/Filtered Products Section */}
         <Box id="products-section" sx={{ pb: 8 }}>
-          {/* Removed py: 8, kept pb: 8 */}
-          {/* --- END CHANGE --- */}
           {showAllProducts && activeFiltersCount > 0 ? (
             <Container maxWidth="xl">
               <Typography
@@ -183,7 +180,6 @@ const Home = () => {
               >
                 Filtered Products
               </Typography>
-
               <Typography
                 variant="body1"
                 color="text.secondary"
@@ -196,6 +192,7 @@ const Home = () => {
                   : `${filteredProducts.length} products found`}
               </Typography>
 
+              {/* (rest of the filter chips and grid logic remains the same) */}
               <Box sx={{ mb: 3, display: "flex", gap: 1, flexWrap: "wrap" }}>
                 {filters.categories.map((cat) => (
                   <Chip
@@ -276,7 +273,14 @@ const Home = () => {
                 <Grid container spacing={3}>
                   <AnimatePresence>
                     {filteredProducts.map((product, index) => (
-                      <Grid item xs={12} sm={6} md={4} lg={3} key={product.id}>
+                      <Grid
+                        item
+                        xs={12}
+                        sm={6}
+                        md={4}
+                        lg={3}
+                        key={product._id || product.id}
+                      >
                         <motion.div
                           initial={{ opacity: 0, y: 20 }}
                           animate={{ opacity: 1, y: 0 }}
@@ -296,6 +300,7 @@ const Home = () => {
           )}
         </Box>
 
+        {/* (Filter FAB and Drawer components remain unchanged) */}
         <Fab
           color="primary"
           onClick={() => setIsFilterOpen(true)}
