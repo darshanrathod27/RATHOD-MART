@@ -22,6 +22,12 @@ import {
   Modal,
   Backdrop,
   TextField,
+  Alert,
+  List,
+  ListItem,
+  ListItemAvatar,
+  Avatar,
+  ListItemText,
 } from "@mui/material";
 import {
   AddShoppingCart,
@@ -38,11 +44,11 @@ import {
 } from "@mui/icons-material";
 import { motion } from "framer-motion";
 import { useParams, useNavigate } from "react-router-dom";
-import { useCart } from "../context/CartContext";
-import { useWishlist } from "../context/WishlistContext";
+import { useCart } from "../context/CartContext.jsx";
+import { useWishlist } from "../context/WishlistContext.jsx";
 import toast from "react-hot-toast";
-import ProductCard from "../components/home/ProductCard";
-import api from "../data/api";
+import ProductCard from "../components/home/ProductCard.jsx";
+import api from "../data/api.js";
 import "./ProductDetail.css";
 
 const PriceBlock = ({
@@ -103,6 +109,10 @@ const ProductDetail = () => {
   const [isHovering, setIsHovering] = useState(false);
   const [userRating, setUserRating] = useState(0);
   const [ratingComment, setRatingComment] = useState("");
+  // --- NEW (Review State) ---
+  const [reviews, setReviews] = useState([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [submitLoading, setSubmitLoading] = useState(false);
 
   const imageRef = useRef(null);
 
@@ -169,6 +179,19 @@ const ProductDetail = () => {
         setLoading(false);
       }
     })();
+    // --- NEW (Fetch Reviews) ---
+    (async () => {
+      setReviewsLoading(true);
+      try {
+        const reviewData = await api.fetchReviewsForProduct(id, { limit: 10 });
+        if (mounted) setReviews(reviewData.data || []);
+      } catch (err) {
+        console.warn("Could not load reviews", err);
+      } finally {
+        if (mounted) setReviewsLoading(false);
+      }
+    })();
+    // --- END NEW ---
     return () => {
       mounted = false;
     };
@@ -241,14 +264,31 @@ const ProductDetail = () => {
     setMousePosition({ x, y });
   }, []);
 
-  const handleSubmitRating = () => {
+  // --- MODIFIED (Handle Rating Submit) ---
+  const handleSubmitRating = async () => {
     if (userRating === 0) {
       toast.error("Please select a rating!");
       return;
     }
-    toast.success("Thank you for your feedback!");
-    setUserRating(0);
-    setRatingComment("");
+    setSubmitLoading(true);
+    try {
+      const reviewData = {
+        rating: userRating,
+        comment: ratingComment,
+        userName: "Guest", // Aap yahan logged in user ka naam daal sakte hain
+      };
+      // API call
+      await api.submitReview(product.id, reviewData);
+      toast.success("Review submitted! Waiting for approval.");
+      setUserRating(0);
+      setRatingComment("");
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message || err.message || "Failed to submit review."
+      );
+    } finally {
+      setSubmitLoading(false);
+    }
   };
 
   if (loading)
@@ -482,35 +522,139 @@ const ProductDetail = () => {
           </Grid>
         </Paper>
 
-        {/* Rating Input */}
-        <Paper className="user-rating-section" sx={{ p: 3, mt: 4 }}>
-          <Typography variant="h6" sx={{ mb: 1 }}>
-            Leave a rating
-          </Typography>
-          <Rating
-            value={userRating}
-            precision={0.5}
-            onChange={(e, val) => setUserRating(val)}
-            size="large"
-            icon={<Star fontSize="inherit" />}
-          />
-          <TextField
-            fullWidth
-            placeholder="Write a short review..."
-            multiline
-            rows={3}
-            value={ratingComment}
-            onChange={(e) => setRatingComment(e.target.value)}
-            sx={{ mt: 2 }}
-          />
-          <Button
-            variant="contained"
-            sx={{ mt: 2 }}
-            onClick={handleSubmitRating}
+        {/* --- NEW (Long Description Section) --- */}
+        {product.description && (
+          <Paper
+            className="product-description-section"
+            sx={{ p: { xs: 2, md: 4 }, mt: 4 }}
           >
-            Submit Review
-          </Button>
+            <Typography variant="h5" sx={{ fontWeight: 700, mb: 2 }}>
+              Product Details
+            </Typography>
+            <Typography
+              variant="body1"
+              sx={{
+                color: "text.secondary",
+                lineHeight: 1.8,
+                whiteSpace: "pre-wrap", // Yeh formatting (jaise new lines) ko rakhega
+              }}
+            >
+              {product.description}
+            </Typography>
+          </Paper>
+        )}
+        {/* --- END NEW --- */}
+
+        {/* --- MODIFIED (Rating & Review Section) --- */}
+        <Paper
+          className="user-rating-section"
+          sx={{ p: { xs: 2, md: 4 }, mt: 4 }}
+        >
+          <Typography variant="h5" sx={{ fontWeight: 700, mb: 2 }}>
+            Ratings & Reviews
+          </Typography>
+
+          {/* Review Input */}
+          <Box mb={4}>
+            <Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }}>
+              Leave a review
+            </Typography>
+            <Rating
+              value={userRating}
+              precision={0.5}
+              onChange={(e, val) => setUserRating(val)}
+              size="large"
+              icon={<Star fontSize="inherit" />}
+              disabled={submitLoading}
+            />
+            <TextField
+              fullWidth
+              placeholder="Write a short review..."
+              multiline
+              rows={3}
+              value={ratingComment}
+              onChange={(e) => setRatingComment(e.target.value)}
+              sx={{ mt: 2 }}
+              disabled={submitLoading}
+            />
+            <Button
+              variant="contained"
+              sx={{ mt: 2 }}
+              onClick={handleSubmitRating}
+              disabled={submitLoading}
+            >
+              {submitLoading ? "Submitting..." : "Submit Review"}
+            </Button>
+          </Box>
+
+          <Divider sx={{ mb: 4 }} />
+
+          {/* Review List */}
+          <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+            Customer Reviews ({product.reviews || 0})
+          </Typography>
+          {reviewsLoading ? (
+            <Typography>Loading reviews...</Typography>
+          ) : reviews.length === 0 ? (
+            <Alert severity="info">
+              Be the first one to review this product!
+            </Alert>
+          ) : (
+            <List sx={{ width: "100%", bgcolor: "background.paper" }}>
+              {reviews.map((review, index) => (
+                <React.Fragment key={review._id}>
+                  <ListItem alignItems="flex-start">
+                    <ListItemAvatar>
+                      <Avatar>
+                        {review.userName ? review.userName[0] : "G"}
+                      </Avatar>
+                    </ListItemAvatar>
+                    <ListItemText
+                      primary={
+                        <Box
+                          sx={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                          }}
+                        >
+                          <Typography sx={{ fontWeight: 600 }}>
+                            {review.userName}
+                          </Typography>
+                          <Rating value={review.rating} readOnly size="small" />
+                        </Box>
+                      }
+                      secondary={
+                        <>
+                          <Typography
+                            sx={{ display: "block", mt: 1 }}
+                            component="span"
+                            variant="body2"
+                            color="text.primary"
+                          >
+                            {review.comment}
+                          </Typography>
+                          <Typography
+                            component="span"
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ mt: 1, display: "block" }}
+                          >
+                            {new Date(review.createdAt).toLocaleDateString()}
+                          </Typography>
+                        </>
+                      }
+                    />
+                  </ListItem>
+                  {index < reviews.length - 1 && (
+                    <Divider variant="inset" component="li" />
+                  )}
+                </React.Fragment>
+              ))}
+            </List>
+          )}
         </Paper>
+        {/* --- END MODIFIED --- */}
 
         {/* Related Products */}
         {related.length > 0 && (

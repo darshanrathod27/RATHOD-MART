@@ -3,8 +3,8 @@ import axios from "axios";
 
 /**
  * CRA env:
- *   REACT_APP_API_URL    -> e.g. http://localhost:5000
- *   REACT_APP_API_PREFIX -> e.g. /api (default /api)
+ * REACT_APP_API_URL    -> e.g. http://localhost:5000
+ * REACT_APP_API_PREFIX -> e.g. /api (default /api)
  */
 const RAW_BASE =
   (process.env.REACT_APP_API_URL && String(process.env.REACT_APP_API_URL)) ||
@@ -103,6 +103,8 @@ const normalizeProduct = (raw = {}) => {
 
   p.name = p.name || p.title || "Untitled product";
   p.shortDescription = p.shortDescription || p.description || "";
+  // --- MODIFIED --- (Long description ke liye 'description' field ko bhi rakhein)
+  p.description = p.description || p.longDescription || "";
 
   // === PRICE FIX ===
   // frontend expects `price`, backend gives basePrice & discountPrice
@@ -272,6 +274,33 @@ export const fetchOfferProducts = async ({
   return prods.filter((p) => (p.discountPercent || 0) >= minDiscount);
 };
 
+// --- NEW (Review Functions) ---
+/**
+ * @desc Get all approved reviews for a product
+ * @param {string} productId
+ * @param {object} params (e.g., { page: 1, limit: 10 })
+ */
+export const fetchReviewsForProduct = async (productId, params = {}) => {
+  if (!productId) throw new Error("Product ID is required");
+  const qs = buildQuery(params);
+  const { data } = await http.get(`/reviews/${productId}${qs}`);
+  // data shape: { success: true, data: [...], pagination: {...} }
+  return data;
+};
+
+/**
+ * @desc Submit a new review for a product
+ * @param {string} productId
+ * @param {object} reviewData (e.g., { rating: 5, comment: "...", userName: "..." })
+ */
+export const submitReview = async (productId, reviewData) => {
+  if (!productId) throw new Error("Product ID is required");
+  const { data } = await http.post(`/reviews/${productId}`, reviewData);
+  // data shape: { success: true, message: "...", data: {...} }
+  return data;
+};
+// --- END NEW ---
+
 const api = {
   fetchProducts,
   fetchProductById,
@@ -279,6 +308,9 @@ const api = {
   fetchCategories,
   fetchBrands,
   fetchOfferProducts,
+  // --- NEW ---
+  fetchReviewsForProduct,
+  submitReview,
 };
 
 export default api;
