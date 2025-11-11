@@ -1,4 +1,4 @@
-// src/components/common/Navbar.jsx
+// File: rathod-mart/RATHOD-MART.../src/components/common/Navbar.jsx
 import React, { useState, useEffect, useCallback } from "react";
 import {
   AppBar,
@@ -85,6 +85,9 @@ const Navbar = () => {
     sortBy: "featured",
   });
 
+  const [navCategories, setNavCategories] = useState([]);
+  const [categoryMenuAnchor, setCategoryMenuAnchor] = useState(null);
+
   const debouncedSearch = useDebounce(searchValue, 300);
 
   useEffect(() => {
@@ -110,6 +113,15 @@ const Navbar = () => {
     const handleScrollEvent = () => setIsScrolled(window.scrollY > 20);
     window.addEventListener("scroll", handleScrollEvent);
     return () => window.removeEventListener("scroll", handleScrollEvent);
+  }, []);
+
+  useEffect(() => {
+    api
+      .fetchCategories({ limit: 50, sortBy: "name", sortOrder: "asc" })
+      .then((data) => {
+        setNavCategories(data);
+      })
+      .catch((err) => console.error("Failed to fetch nav categories", err));
   }, []);
 
   useEffect(() => {
@@ -141,22 +153,34 @@ const Navbar = () => {
     [searchValue, navigate]
   );
 
-  const handleNavClick = (item) => {
-    item.action();
-    setActiveLink(item.name);
+  const handleNavClick = (item, e) => {
+    if (item.action) {
+      item.action(e);
+    }
+    if (item.name !== "Categories") {
+      setActiveLink(item.name);
+    }
   };
 
-  // <-- Your updated handleScrollToSection (keeps state navigation when not on home)
   const handleScrollToSection = (sectionId) => {
-    // Check if we are on the homepage
     if (location.pathname !== "/") {
-      // If not on home, navigate to home and pass the sectionId in state
       navigate("/", { state: { scrollTo: sectionId } });
     } else {
-      // If already on home, just scroll
-      document
-        .getElementById(sectionId)
-        ?.scrollIntoView({ behavior: "smooth" });
+      const el = document.getElementById(sectionId);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth" });
+      } else {
+        // Fallback agar ID (jo maine pichli baar add ki thi) abhi tak DOM mein nahi hai
+        // ID `categories-section` hai Categories.jsx mein
+        api.fetchCategories({ limit: 20, sortBy: "productsCount" }).then(() => {
+          // force re-render/wait a tick
+          setTimeout(() => {
+            document
+              .getElementById(sectionId)
+              ?.scrollIntoView({ behavior: "smooth" });
+          }, 100);
+        });
+      }
     }
   };
 
@@ -169,15 +193,13 @@ const Navbar = () => {
     },
     {
       name: "Categories",
-      path: "#categories",
       icon: <Category />,
-      action: () => handleScrollToSection("categories-section"),
+      action: (e) => setCategoryMenuAnchor(e.currentTarget),
     },
     {
       name: "Trending",
-      path: "#trending",
       icon: <TrendingUp />,
-      action: () => handleScrollToSection("trending-section"),
+      action: () => handleScrollToSection("trending-section"), // Yeh 'trending-section' ID BestOffers.jsx ya FeaturedProducts.jsx mein honi chahiye
     },
   ];
 
@@ -187,7 +209,6 @@ const Navbar = () => {
     navigate("/", { state: { filters: newFilters, applyFilters: true } });
   };
 
-  // Logout handler (uses api.post and redux)
   const handleLogout = async () => {
     setUserMenuAnchor(null);
     try {
@@ -233,7 +254,11 @@ const Navbar = () => {
             button
             key={item.name}
             onClick={() => {
-              item.action();
+              if (item.name === "Categories") {
+                navigate("/category"); // Mobile par category page par jao
+              } else {
+                item.action();
+              }
               setMobileOpen(false);
             }}
           >
@@ -295,7 +320,14 @@ const Navbar = () => {
                   return (
                     <Button
                       key={item.name}
-                      onClick={() => handleNavClick(item)}
+                      onClick={(e) => handleNavClick(item, e)}
+                      // --- ADDED: Hover logic ---
+                      onMouseEnter={(e) => {
+                        if (item.name === "Categories") {
+                          handleNavClick(item, e);
+                        }
+                      }}
+                      // --- END ---
                       className="nav-link"
                       sx={{
                         color: "text.primary",
@@ -330,6 +362,7 @@ const Navbar = () => {
 
             <Box sx={{ flexGrow: 1 }} />
 
+            {/* ... (Baaki poora Navbar.jsx code waisa hi rahega) ... */}
             {/* Search Bar */}
             <Box
               component="form"
@@ -613,6 +646,53 @@ const Navbar = () => {
             </MenuItem>
           </>
         )}
+      </Menu>
+
+      {/* Category Menu */}
+      <Menu
+        anchorEl={categoryMenuAnchor}
+        open={Boolean(categoryMenuAnchor)}
+        onClose={() => setCategoryMenuAnchor(null)}
+        // --- ADDED: Close menu on mouse leave ---
+        MenuListProps={{
+          onMouseLeave: () => setCategoryMenuAnchor(null),
+        }}
+        // --- END ---
+        PaperProps={{
+          sx: {
+            mt: 2,
+            borderRadius: 3,
+            minWidth: 260,
+            maxHeight: 400,
+            backdropFilter: "blur(20px)",
+            border: "1px solid rgba(0, 0, 0, 0.1)",
+            boxShadow: theme.shadows[3],
+          },
+        }}
+      >
+        {navCategories.length === 0 && <MenuItem>Loading...</MenuItem>}
+        {navCategories.map((cat) => (
+          <MenuItem
+            key={cat.id}
+            onClick={() => {
+              navigate(`/category?category=${cat.id}`);
+              setCategoryMenuAnchor(null);
+            }}
+          >
+            <ListItemIcon>
+              <Typography sx={{ fontSize: "1.2rem", mr: 1, color: cat.color }}>
+                {cat.icon}
+              </Typography>
+            </ListItemIcon>
+            <ListItemText primary={cat.name} />
+            <Typography
+              variant="caption"
+              sx={{ ml: 2, color: "text.secondary", fontWeight: 600 }}
+            >
+              {cat.count} {/* <-- Live count from backend */}
+            </Typography>
+          </MenuItem>
+        ))}
       </Menu>
 
       {/* Filter Drawer */}

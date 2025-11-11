@@ -1,9 +1,11 @@
-import React, { useRef, useState } from "react";
+// File: rathod-mart/RATHOD-MART.../src/components/home/Categories.jsx
+import React, { useRef, useState, useEffect } from "react"; // <-- MODIFIED
 import { Box, Container, Typography, IconButton } from "@mui/material";
 import { motion, useMotionValue, useTransform, animate } from "framer-motion";
 import { ChevronLeft, ChevronRight } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
-import { categories } from "../../data/products";
+// import { categories } from "../../data/products"; // <-- DELETED
+import api from "../../data/api"; // <-- ADDED
 import "./Categories.css";
 
 const Categories = () => {
@@ -15,8 +17,36 @@ const Categories = () => {
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
 
+  // --- ADDED ---
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+  // --- END ---
+
   const x = useMotionValue(0);
   const scale = useTransform(x, [-100, 0, 100], [0.98, 1, 0.98]);
+
+  // --- ADDED: Data fetching logic ---
+  useEffect(() => {
+    let mounted = true;
+    api
+      .fetchCategories({ limit: 20, sortBy: "productsCount" }) // Fetch top 20 by product count
+      .then((data) => {
+        if (mounted) {
+          setCategories(data);
+        }
+      })
+      .catch((err) => console.error("Failed to fetch categories", err))
+      .finally(() => {
+        if (mounted) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+  // --- END ---
 
   const checkScrollButtons = () => {
     const scroller = scrollerRef.current;
@@ -45,7 +75,8 @@ const Categories = () => {
   };
   const handleCategoryClick = (categoryId, categoryName) => {
     if (!isDragging) {
-      navigate(`/products?category=${categoryId}`);
+      // --- MODIFIED: Use correct path from App.jsx ---
+      navigate(`/category?category=${categoryId}`);
     }
   };
 
@@ -86,27 +117,12 @@ const Categories = () => {
   };
 
   return (
-    <Box className="categories-section">
+    <Box className="categories-section" id="categories-section">
+      {" "}
+      {/* Added ID for scrolling */}
       <Container maxWidth="xl">
         {/* Header with Navigation Buttons */}
-        {/* <Box className="categories-header">
-          <Box className="scroll-controls">
-            <IconButton
-              className="scroll-button"
-              onClick={() => handleScroll("left")}
-              disabled={!canScrollLeft}
-            >
-              <ChevronLeft />
-            </IconButton>
-            <IconButton
-              className="scroll-button"
-              onClick={() => handleScroll("right")}
-              disabled={!canScrollRight}
-            >
-              <ChevronRight />
-            </IconButton>
-          </Box>
-        </Box> */}
+        {/* ... (Your commented out header) ... */}
 
         {/* Categories Scroller */}
         <Box className="categories-wrapper">
@@ -125,9 +141,15 @@ const Categories = () => {
               onTouchMove={handleDragMove}
               onTouchEnd={handleDragEnd}
             >
+              {/* --- ADDED: Loading check --- */}
+              {loading && (
+                <Box sx={{ p: 4, color: "text.secondary" }}>
+                  Loading categories...
+                </Box>
+              )}
               {categories.map((category, index) => (
                 <motion.div
-                  key={category.id}
+                  key={category.id} // <-- Uses API data
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{
@@ -151,19 +173,17 @@ const Categories = () => {
                 >
                   <Box
                     className="category-card"
-                    onClick={() =>
-                      handleCategoryClick(category.id, category.name)
+                    onClick={
+                      () => handleCategoryClick(category.id, category.name) // <-- Uses API data
                     }
                     sx={{
-                      "--category-color": category.color,
-                      "--category-color-light": `${category.color}10`,
-                      "--category-color-border": `${category.color}40`,
+                      "--category-color": category.color, // <-- Uses API data
+                      "--category-color-light": `${category.color}10`, // <-- Uses API data
+                      "--category-color-border": `${category.color}40`, // <-- Uses API data
                     }}
                   >
-                    {/* Background Glow */}
+                    {/* ... (Glow and Shine effects) ... */}
                     <Box className="category-glow" />
-
-                    {/* Shine Effect */}
                     <Box className="category-shine" />
 
                     {/* Icon */}
@@ -178,21 +198,21 @@ const Categories = () => {
                       }}
                     >
                       <Typography className="category-icon">
-                        {category.icon}
+                        {category.icon} {/* <-- Uses API data */}
                       </Typography>
                     </motion.div>
 
                     {/* Text Content */}
                     <Box className="category-text">
                       <Typography className="category-name">
-                        {category.name}
+                        {category.name} {/* <-- Uses API data */}
                       </Typography>
                       <Typography className="category-count">
-                        {category.count} Products
+                        {category.count} Products {/* <-- Uses API data */}
                       </Typography>
                     </Box>
 
-                    {/* Smooth Particles */}
+                    {/* ... (Particle effects) ... */}
                     <Box className="category-particles">
                       {[...Array(8)].map((_, i) => (
                         <motion.div

@@ -1,5 +1,7 @@
-// src/data/api.js
+// File: rathod-mart/RATHOD-MART.../src/data/api.js
 import axios from "axios";
+// --- ADD THIS IMPORT ---
+import { getCategoryIcon, getCategoryColor } from "../utils/categoryIcons.js";
 
 /**
  * CRA env:
@@ -260,19 +262,34 @@ export const fetchProductVariants = async (productId) => {
   }
 };
 
+// --- REPLACE THIS FUNCTION ---
 /**
  * Fetch categories
  */
 export const fetchCategories = async (params = {}) => {
+  const qs = buildQuery(params);
   try {
-    const qs = buildQuery(params);
     const { data } = await http.get(`/categories${qs}`);
-    return data?.data || [];
+    const arr = data?.data || [];
+
+    // Normalize backend data to match frontend expectations
+    return arr.map((cat) => ({
+      id: cat._id, // Use _id as the main id
+      _id: cat._id,
+      name: cat.name,
+      // Use backend icon/color first, or fallback to the utility function
+      icon: cat.icon || getCategoryIcon(cat.name),
+      color: cat.color || getCategoryColor(cat.name),
+      // Use the product count from the backend
+      count: cat.productsCount || 0,
+      slug: cat.slug,
+    }));
   } catch (err) {
     console.error("fetchCategories error:", err?.message || err);
     return [];
   }
 };
+// --- END OF REPLACED FUNCTION ---
 
 /**
  * Fetch brands
