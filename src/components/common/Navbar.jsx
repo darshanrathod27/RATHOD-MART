@@ -1,3 +1,4 @@
+// src/components/common/Navbar.jsx
 import React, { useState, useEffect, useCallback } from "react";
 import {
   AppBar,
@@ -34,6 +35,7 @@ import {
   FilterList,
   Close,
   Home as HomeIcon,
+  Logout as LogoutIcon,
 } from "@mui/icons-material";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -41,6 +43,11 @@ import { useCart } from "../../context/CartContext";
 import { useWishlist } from "../../context/WishlistContext";
 import { useDebounce } from "../../hooks/useDebounce";
 import AdvancedFilterDrawer from "../filter/AdvancedFilterDrawer";
+
+import { useSelector, useDispatch } from "react-redux";
+import { logout as logoutAction } from "../../store/authSlice";
+import api from "../../data/api";
+import toast from "react-hot-toast";
 
 const Navbar = () => {
   const theme = useTheme();
@@ -50,6 +57,12 @@ const Navbar = () => {
 
   const { getCartItemsCount, openCart } = useCart();
   const { getWishlistItemsCount, openWishlist } = useWishlist();
+
+  // Redux
+  const dispatch = useDispatch();
+  const { isAuthenticated, userInfo } = useSelector(
+    (state) => state.auth || {}
+  );
 
   const cartItemCount = getCartItemsCount();
   const wishlistItemCount = getWishlistItemsCount();
@@ -167,8 +180,22 @@ const Navbar = () => {
   const handleApplyFilters = (newFilters) => {
     setFilters(newFilters);
     setIsFilterOpen(false);
-    // Navigate to home with filter state
     navigate("/", { state: { filters: newFilters, applyFilters: true } });
+  };
+
+  // Logout handler (uses api.post and redux)
+  const handleLogout = async () => {
+    setUserMenuAnchor(null);
+    try {
+      // ensure api.post is available (api.js should expose post)
+      await api.post("/users/logout");
+      dispatch(logoutAction());
+      toast.success("Logged out successfully");
+      navigate("/login");
+    } catch (err) {
+      console.error("Logout error:", err);
+      toast.error("Logout failed");
+    }
   };
 
   const MobileDrawer = (
@@ -349,6 +376,7 @@ const Navbar = () => {
                   />
                 </Box>
               </motion.div>
+
               <AnimatePresence>
                 {isSearchFocused && searchSuggestions.length > 0 && (
                   <motion.div
@@ -401,9 +429,7 @@ const Navbar = () => {
                     sx={{
                       color: "#2E7D32",
                       transition: "all 0.3s",
-                      "&:hover": {
-                        bgcolor: "#E8F5E9",
-                      },
+                      "&:hover": { bgcolor: "#E8F5E9" },
                     }}
                   >
                     <FilterList />
@@ -537,24 +563,53 @@ const Navbar = () => {
             minWidth: 220,
             backdropFilter: "blur(20px)",
             border: "1px solid rgba(255, 255, 255, 0.3)",
+            boxShadow: theme.shadows[3],
           },
         }}
       >
-        <MenuItem
-          onClick={() => {
-            navigate("/profile");
-            setUserMenuAnchor(null);
-          }}
-        >
-          <ListItemIcon>
-            <AccountCircle fontSize="small" />
-          </ListItemIcon>
-          <ListItemText>Profile</ListItemText>
-        </MenuItem>
-        <Divider />
-        <MenuItem onClick={() => setUserMenuAnchor(null)}>
-          <ListItemText>Logout</ListItemText>
-        </MenuItem>
+        {isAuthenticated ? (
+          <>
+            <MenuItem
+              onClick={() => {
+                navigate("/profile");
+                setUserMenuAnchor(null);
+              }}
+            >
+              <ListItemIcon>
+                <AccountCircle fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>
+                Profile{userInfo?.name ? ` (${userInfo.name})` : ""}
+              </ListItemText>
+            </MenuItem>
+            <Divider />
+            <MenuItem onClick={handleLogout}>
+              <ListItemIcon>
+                <LogoutIcon fontSize="small" color="error" />
+              </ListItemIcon>
+              <ListItemText sx={{ color: "error.main" }}>Logout</ListItemText>
+            </MenuItem>
+          </>
+        ) : (
+          <>
+            <MenuItem
+              onClick={() => {
+                navigate("/login");
+                setUserMenuAnchor(null);
+              }}
+            >
+              <ListItemText>Login</ListItemText>
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                navigate("/register");
+                setUserMenuAnchor(null);
+              }}
+            >
+              <ListItemText>Register</ListItemText>
+            </MenuItem>
+          </>
+        )}
       </Menu>
 
       {/* Filter Drawer */}

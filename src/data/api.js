@@ -18,16 +18,24 @@ const API_PREFIX =
 
 const http = axios.create({
   baseURL: `${API_BASE}${API_PREFIX}`, // => http://localhost:5000/api
-  withCredentials: false,
+  withCredentials: true, // ensure cookies (session) are sent for auth endpoints
+  headers: {
+    "Content-Type": "application/json",
+  },
 });
+
+/* ---------- Helpers ---------- */
 
 /* Build query string from object (arrays allowed) */
 const buildQuery = (params = {}) => {
   const sp = new URLSearchParams();
-  Object.entries(params).forEach(([k, v]) => {
+  Object.entries(params || {}).forEach(([k, v]) => {
     if (v === undefined || v === null || v === "") return;
-    if (Array.isArray(v)) v.forEach((val) => sp.append(k, val));
-    else sp.append(k, String(v));
+    if (Array.isArray(v)) {
+      v.forEach((val) => sp.append(k, val));
+    } else {
+      sp.append(k, String(v));
+    }
   });
   const qs = sp.toString();
   return qs ? `?${qs}` : "";
@@ -45,19 +53,17 @@ const normalizeProduct = (raw = {}) => {
   const p = { ...raw };
   p.id = p._id || p.id;
 
-  // ensure images are objects with fullUrl and keep variant/variantId if present
+  // images -> objects with fullUrl and other metadata
   let imagesObj = [];
   if (Array.isArray(p.images)) {
     imagesObj = p.images.map((img) => {
       const c = { ...(img || {}) };
-      // prefer existing fullUrl fields, otherwise make full url from url
       c.fullUrl =
         c.fullUrl ||
         c.fullImageUrl ||
         ensureFullUrl(c.url) ||
         ensureFullUrl(c.imageUrl) ||
         null;
-      // variant identification — backend may send variantId or variant
       c.variantId =
         c.variantId ||
         (c.variant &&
@@ -65,7 +71,6 @@ const normalizeProduct = (raw = {}) => {
             ? c.variant._id || c.variant
             : c.variant)) ||
         null;
-      // keep other fields like isPrimary if available
       c.isPrimary = c.isPrimary || c.is_primary || c.primary || false;
       return c;
     });
@@ -73,7 +78,7 @@ const normalizeProduct = (raw = {}) => {
 
   p.images = imagesObj;
 
-  // select primary image
+  // choose primary image
   const primaryImg = imagesObj.find((i) => i.isPrimary) || imagesObj[0] || null;
   if (p.primaryImageFullUrl) {
     p.image = p.primaryImageFullUrl;
@@ -87,7 +92,7 @@ const normalizeProduct = (raw = {}) => {
     p.image = null;
   }
 
-  // discountPercent (keep original logic)
+  // discountPercent
   if (typeof p.discount === "number") {
     p.discountPercent = p.discount;
   } else if (
@@ -103,32 +108,27 @@ const normalizeProduct = (raw = {}) => {
 
   p.name = p.name || p.title || "Untitled product";
   p.shortDescription = p.shortDescription || p.description || "";
-  // --- MODIFIED --- (Long description ke liye 'description' field ko bhi rakhein)
   p.description = p.description || p.longDescription || "";
 
-  // === PRICE FIX ===
-  // frontend expects `price`, backend gives basePrice & discountPrice
+  // price fields
   p.price = p.discountPrice ?? p.basePrice ?? null;
   p.originalPrice =
     typeof p.discountPrice === "number" && p.discountPrice < p.basePrice
       ? p.basePrice
       : null;
 
-  // === STOCK / IN-STOCK FIX ===
-  // prefer totalStock, fallback to stock
+  // stock
   p.stock = p.totalStock ?? p.stock ?? 0;
   p.inStock = (p.totalStock ?? p.stock ?? 0) > 0;
 
-  // === RATING & REVIEWS ===
+  // rating & reviews
   p.rating = typeof p.rating === "number" ? p.rating : p.avgRating ?? 0;
   p.reviews =
     typeof p.reviewCount === "number" ? p.reviewCount : p.reviews || 0;
 
-  // === VARIANTS normalization ===
-  // backend may supply variants (with color, size, sku, price etc.)
+  // variants
   p.variants = (p.variants || []).map((v) => {
     const id = v._id || v.id;
-    // map color/size fields defensively
     const colorObj = v.color
       ? typeof v.color === "object"
         ? {
@@ -146,7 +146,6 @@ const normalizeProduct = (raw = {}) => {
         : { name: v.size, value: "" }
       : null;
 
-    // collect images mapped to this variant from product images list
     const vImages = imagesObj
       .filter((img) => {
         if (!img.variantId) return false;
@@ -168,66 +167,82 @@ const normalizeProduct = (raw = {}) => {
       color: colorObj,
       size: sizeObj,
       images: vImages,
+      raw: v,
     };
   });
 
-  // generalImages (images not tied to any variant)
+  // generalImages = images not tied to variant
   p.generalImages = imagesObj
     .filter((img) => !img.variantId)
     .map((img) => img.fullUrl)
     .filter(Boolean);
 
-  // keep images as objects with fullUrl for places that expect fullUrl
-  // (productDetail expects product.images which is an array of objects with .fullUrl)
-  // p.images already set above.
-
-  // also expose a simple imagesUrls array for convenience
   p.imagesUrls = imagesObj.map((im) => im.fullUrl).filter(Boolean) || [];
 
   return p;
 };
 
-/* -------- API -------- */
+/* ---------- API functions ---------- */
 
+/**
+ * Fetch products (list)
+ * params: { page, limit, q, category, brand, sort, etc. }
+ */
 export const fetchProducts = async (params = {}) => {
   const qs = buildQuery(params);
-  const { data } = await http.get(`/products${qs}`);
-  const arr = data?.data || [];
-  return arr.map(normalizeProduct);
+  try {
+    const { data } = await http.get(`/products${qs}`);
+    const arr = data?.data || [];
+    return arr.map(normalizeProduct);
+  } catch (err) {
+    console.error("fetchProducts error:", err?.message || err);
+    return [];
+  }
 };
 
+/**
+ * Fetch single product by id
+ */
 export const fetchProductById = async (id) => {
   if (!id) throw new Error("id required");
-  const { data } = await http.get(`/products/${id}`);
-  return data?.data ? normalizeProduct(data.data) : null;
+  try {
+    const { data } = await http.get(`/products/${id}`);
+    return data?.data ? normalizeProduct(data.data) : null;
+  } catch (err) {
+    console.error("fetchProductById error:", err?.message || err);
+    return null;
+  }
 };
 
-/* Fetch product variants (inventory controller) */
+/**
+ * Fetch product variants (inventory controller)
+ * expected endpoint: GET /inventory/product-variants/:productId
+ */
 export const fetchProductVariants = async (productId) => {
   if (!productId) return [];
   try {
     const { data } = await http.get(`/inventory/product-variants/${productId}`);
-    // expect data.data to be an array (inventoryController returns variants with currentStock)
     const arr = data?.data || [];
-    // ensure consistent shape for frontend
     return arr.map((v) => {
       const id = v._id || v.id;
-      const color = v.color
-        ? typeof v.color === "object"
+      const color =
+        v.color && typeof v.color === "object"
           ? {
               name: v.color.sizeName || v.color.name || v.color.colorName || "",
               value: v.color.value || "",
             }
-          : { name: v.color, value: "" }
-        : null;
-      const size = v.size
-        ? typeof v.size === "object"
+          : v.color
+          ? { name: v.color, value: "" }
+          : null;
+      const size =
+        v.size && typeof v.size === "object"
           ? {
               name: v.size.sizeName || v.size.name || "",
               value: v.size.value || "",
             }
-          : { name: v.size, value: "" }
-        : null;
+          : v.size
+          ? { name: v.size, value: "" }
+          : null;
       return {
         id,
         _id: id,
@@ -236,7 +251,6 @@ export const fetchProductVariants = async (productId) => {
         stock: v.currentStock ?? v.stock ?? 0,
         color,
         size,
-        // other fields may be present; include raw for fallback
         raw: v,
       };
     });
@@ -246,71 +260,102 @@ export const fetchProductVariants = async (productId) => {
   }
 };
 
+/**
+ * Fetch categories
+ */
 export const fetchCategories = async (params = {}) => {
   try {
     const qs = buildQuery(params);
     const { data } = await http.get(`/categories${qs}`);
     return data?.data || [];
-  } catch {
+  } catch (err) {
+    console.error("fetchCategories error:", err?.message || err);
     return [];
   }
 };
 
+/**
+ * Fetch brands
+ */
 export const fetchBrands = async (params = {}) => {
   try {
     const qs = buildQuery(params);
     const { data } = await http.get(`/brands${qs}`);
     return data?.data || [];
-  } catch {
+  } catch (err) {
+    console.error("fetchBrands error:", err?.message || err);
     return [];
   }
 };
 
+/**
+ * Fetch offer products (filter by discount)
+ */
 export const fetchOfferProducts = async ({
   minDiscount = 30,
   limit = 48,
 } = {}) => {
-  const prods = await fetchProducts({ limit });
-  return prods.filter((p) => (p.discountPercent || 0) >= minDiscount);
+  try {
+    const prods = await fetchProducts({ limit });
+    return prods.filter((p) => (p.discountPercent || 0) >= minDiscount);
+  } catch (err) {
+    console.error("fetchOfferProducts error:", err?.message || err);
+    return [];
+  }
 };
 
-// --- NEW (Review Functions) ---
+/* --- Reviews --- */
 /**
- * @desc Get all approved reviews for a product
- * @param {string} productId
- * @param {object} params (e.g., { page: 1, limit: 10 })
+ * Get all approved reviews for a product
+ * returns raw response (data, pagination)
  */
 export const fetchReviewsForProduct = async (productId, params = {}) => {
   if (!productId) throw new Error("Product ID is required");
   const qs = buildQuery(params);
-  const { data } = await http.get(`/reviews/${productId}${qs}`);
-  // data shape: { success: true, data: [...], pagination: {...} }
-  return data;
+  try {
+    const { data } = await http.get(`/reviews/${productId}${qs}`);
+    return data;
+  } catch (err) {
+    console.error("fetchReviewsForProduct error:", err?.message || err);
+    throw err;
+  }
 };
 
 /**
- * @desc Submit a new review for a product
- * @param {string} productId
- * @param {object} reviewData (e.g., { rating: 5, comment: "...", userName: "..." })
+ * Submit a new review for a product
  */
 export const submitReview = async (productId, reviewData) => {
   if (!productId) throw new Error("Product ID is required");
-  const { data } = await http.post(`/reviews/${productId}`, reviewData);
-  // data shape: { success: true, message: "...", data: {...} }
-  return data;
+  try {
+    const { data } = await http.post(`/reviews/${productId}`, reviewData);
+    return data;
+  } catch (err) {
+    console.error("submitReview error:", err?.message || err);
+    throw err;
+  }
 };
-// --- END NEW ---
 
+/* ---------- Expose simple http methods + helpers ---------- */
 const api = {
+  // raw axios helpers (useful for auth endpoints like /users/login, /users/logout)
+  post: http.post.bind(http),
+  get: http.get.bind(http),
+  put: http.put ? http.put.bind(http) : undefined,
+  delete: http.delete ? http.delete.bind(http) : undefined,
+
+  // domain-specific functions
   fetchProducts,
   fetchProductById,
   fetchProductVariants,
   fetchCategories,
   fetchBrands,
   fetchOfferProducts,
-  // --- NEW ---
   fetchReviewsForProduct,
   submitReview,
+  // helpers if needed externally
+  buildQuery,
+  ensureFullUrl,
+  normalizeProduct,
 };
 
 export default api;

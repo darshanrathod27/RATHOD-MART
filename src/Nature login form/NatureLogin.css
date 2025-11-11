@@ -1,3 +1,5 @@
+/* rathod-mart/src/pages/NatureLogin.css */
+/* (Content copied from src/Nature login form/style.css) */
 * {
   margin: 0;
   padding: 0;
@@ -5,7 +7,7 @@
   font-family: "Poppins", sans-serif;
 }
 
-section {
+.login-section {
   position: relative;
   display: flex;
   justify-content: center;
@@ -15,7 +17,7 @@ section {
   overflow: hidden;
 }
 
-section .bg {
+.login-section .bg {
   position: absolute;
   top: 0;
   left: 0;
@@ -25,7 +27,7 @@ section .bg {
   pointer-events: none;
 }
 
-section .trees {
+.login-section .trees {
   position: absolute;
   top: 0;
   left: 0;
@@ -36,7 +38,7 @@ section .trees {
   pointer-events: none;
 }
 
-section .girl {
+.login-section .girl {
   position: absolute;
   scale: 0.65;
   pointer-events: none;
@@ -58,7 +60,7 @@ section .girl {
   }
 }
 
-.login {
+.login-form {
   position: relative;
   padding: 60px;
   background: rgba(255, 255, 255, 0.25);
@@ -72,9 +74,10 @@ section .girl {
   flex-direction: column;
   gap: 30px;
   box-shadow: 0 25px 50px rgba(0, 0, 0, 0.1);
+  z-index: 2; /* Ensure form is above leaves */
 }
 
-.login h2 {
+.login-form h2 {
   position: relative;
   width: 100%;
   text-align: center;
@@ -84,11 +87,11 @@ section .girl {
   margin-bottom: 10px;
 }
 
-.login .inputBox {
+.login-form .inputBox {
   position: relative;
 }
 
-.login .inputBox input {
+.login-form .inputBox input {
   position: relative;
   width: 100%;
   padding: 15px 20px;
@@ -98,14 +101,14 @@ section .girl {
   border-radius: 5px;
   background: #fff;
   border: none;
-  margin-bottom: 30px;
+  /* margin-bottom: 30px; */ /* Handled by gap on parent */
 }
 
-.login .inputBox ::placeholder {
+.login-form .inputBox ::placeholder {
   color: #8f2c24;
 }
 
-.login .inputBox #btn {
+.login-form .inputBox #btn {
   position: relative;
   border: none;
   outline: none;
@@ -117,23 +120,28 @@ section .girl {
   transition: 0.5s;
 }
 
-.login .inputBox #btn:hover {
+.login-form .inputBox #btn:hover {
   background: #d64c42;
 }
 
-.login .group {
+.login-form .inputBox #btn:disabled {
+  background: #b0a8a7;
+  cursor: not-allowed;
+}
+
+.login-form .group {
   display: flex;
   justify-content: space-between;
 }
 
-.login .group a {
+.login-form .group a {
   font-size: 1.25em;
   color: #8f2c24;
   font-weight: 500;
   text-decoration: none;
 }
 
-.login .group a:nth-child(2) {
+.login-form .group a:nth-child(2) {
   text-decoration: underline;
 }
 

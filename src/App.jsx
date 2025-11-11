@@ -14,8 +14,9 @@ const Home = lazy(() => import("./pages/Home"));
 const ProductDetail = lazy(() => import("./pages/ProductDetail"));
 const Checkout = lazy(() => import("./pages/Checkout"));
 const CategoryProducts = lazy(() => import("./pages/CategoryProducts"));
-// --- NEW ---
-const SearchPage = lazy(() => import("./pages/SearchPage")); // 1. Naya page import karein
+const SearchPage = lazy(() => import("./pages/SearchPage"));
+const Login = lazy(() => import("./pages/Login")); // 1. Add Login
+const Register = lazy(() => import("./pages/Register")); // 2. Add Register
 
 function App() {
   return (
@@ -26,12 +27,13 @@ function App() {
         <Suspense fallback={<Loader />}>
           <Routes>
             <Route path="/" element={<Home />} />
+            <Route path="/login" element={<Login />} /> {/* 3. Add Route */}
+            <Route path="/register" element={<Register />} />{" "}
+            {/* 4. Add Route */}
             <Route path="/category" element={<CategoryProducts />} />
             <Route path="/product/:id" element={<ProductDetail />} />
             <Route path="/checkout" element={<Checkout />} />
-            {/* --- NEW --- */}
-            <Route path="/search" element={<SearchPage />} />{" "}
-            {/* 2. Naya route add karein */}
+            <Route path="/search" element={<SearchPage />} />
             <Route path="*" element={<Home />} />
           </Routes>
         </Suspense>
