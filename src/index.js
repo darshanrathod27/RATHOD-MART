@@ -6,8 +6,9 @@ import { ThemeProvider } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
 import { Toaster } from "react-hot-toast";
 
-import { Provider } from "react-redux"; // 1. Import Provider
-import { store } from "./store/store"; // 2. Import store
+import { Provider } from "react-redux";
+import { store } from "./store/store";
+import { checkAuthStatus } from "./store/authSlice";
 
 import App from "./App";
 import theme from "./theme/theme";
@@ -25,35 +26,46 @@ AOS.init({
 });
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
-root.render(
-  <React.StrictMode>
-    <Provider store={store}>
-      {" "}
-      {/* 3. Add Provider wrapper */}
-      <BrowserRouter>
-        <ThemeProvider theme={theme}>
-          <CssBaseline />
-          <CartProvider>
-            <WishlistProvider>
-              <Toaster
-                position="top-center"
-                toastOptions={{
-                  duration: 3000,
-                  style: {
-                    background:
-                      "linear-gradient(135deg, #2E7D32 0%, #00BFA5 100%)",
-                    color: "#fff",
-                    borderRadius: "50px",
-                    padding: "16px 24px",
-                  },
-                }}
-              />
-              <App />
-            </WishlistProvider>
-          </CartProvider>
-        </ThemeProvider>
-      </BrowserRouter>
-    </Provider>{" "}
-    {/* 4. Close Provider wrapper */}
-  </React.StrictMode>
-);
+
+// 2. Create an async function to run before render
+const initializeApp = async () => {
+  try {
+    // 3. Dispatch the auth check
+    await store.dispatch(checkAuthStatus()).unwrap();
+  } catch (err) {
+    console.log("Not authenticated on load.");
+  }
+
+  // 4. Render the app
+  root.render(
+    <React.StrictMode>
+      <Provider store={store}>
+        <BrowserRouter>
+          <ThemeProvider theme={theme}>
+            <CssBaseline />
+            <CartProvider>
+              <WishlistProvider>
+                <Toaster
+                  position="top-center"
+                  toastOptions={{
+                    duration: 3000,
+                    style: {
+                      background:
+                        "linear-gradient(135deg, #2E7D32 0%, #00BFA5 100%)",
+                      color: "#fff",
+                      borderRadius: "50px",
+                      padding: "16px 24px",
+                    },
+                  }}
+                />
+                <App />
+              </WishlistProvider>
+            </CartProvider>
+          </ThemeProvider>
+        </BrowserRouter>
+      </Provider>
+    </React.StrictMode>
+  );
+};
+
+initializeApp();

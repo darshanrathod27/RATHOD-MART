@@ -145,7 +145,9 @@ const CategoryProducts = () => {
       component={motion.div}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      sx={{ bgcolor: "#fafafa", minHeight: "100vh", pt: 12, pb: 8 }}
+      // --- CHANGE HERE ---
+      sx={{ bgcolor: "background.default", minHeight: "100vh", pt: 12, pb: 8 }}
+      // --- END CHANGE ---
     >
       <Container maxWidth="xl">
         <Breadcrumbs

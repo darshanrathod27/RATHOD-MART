@@ -320,14 +320,9 @@ const Navbar = () => {
                   return (
                     <Button
                       key={item.name}
+                      // --- CHANGE 1: onClick, not onMouseEnter ---
                       onClick={(e) => handleNavClick(item, e)}
-                      // --- ADDED: Hover logic ---
-                      onMouseEnter={(e) => {
-                        if (item.name === "Categories") {
-                          handleNavClick(item, e);
-                        }
-                      }}
-                      // --- END ---
+                      // --- END CHANGE 1 ---
                       className="nav-link"
                       sx={{
                         color: "text.primary",
@@ -595,7 +590,9 @@ const Navbar = () => {
         PaperProps={{
           sx: {
             mt: 2,
-            borderRadius: 3,
+            // --- CHANGE 2: Square corners ---
+            borderRadius: 0, // Was 3
+            // --- END CHANGE 2 ---
             minWidth: 220,
             backdropFilter: "blur(20px)",
             border: "1px solid rgba(255, 255, 255, 0.3)",
@@ -653,15 +650,17 @@ const Navbar = () => {
         anchorEl={categoryMenuAnchor}
         open={Boolean(categoryMenuAnchor)}
         onClose={() => setCategoryMenuAnchor(null)}
-        // --- ADDED: Close menu on mouse leave ---
-        MenuListProps={{
-          onMouseLeave: () => setCategoryMenuAnchor(null),
-        }}
-        // --- END ---
+        // --- CHANGE 3: Removed onMouseLeave ---
+        // MenuListProps={{
+        //   onMouseLeave: () => setCategoryMenuAnchor(null),
+        // }}
+        // --- END CHANGE 3 ---
         PaperProps={{
           sx: {
             mt: 2,
-            borderRadius: 3,
+            // --- CHANGE 4: Square corners ---
+            borderRadius: 0, // Was 3
+            // --- END CHANGE 4 ---
             minWidth: 260,
             maxHeight: 400,
             backdropFilter: "blur(20px)",

@@ -171,7 +171,10 @@ const Home = () => {
         <BestOffers />
         <Categories />
 
-        <Box id="products-section" sx={{ py: 8 }}>
+        {/* --- CHANGE HERE --- */}
+        <Box id="products-section" sx={{ pb: 8 }}>
+          {/* Removed py: 8, kept pb: 8 */}
+          {/* --- END CHANGE --- */}
           {showAllProducts && activeFiltersCount > 0 ? (
             <Container maxWidth="xl">
               <Typography

@@ -2,13 +2,7 @@
 
 /* Premium Section Styling with Gradient Background */
 .best-offers-section {
-  background: linear-gradient(
-    180deg,
-    #fafafa 0%,
-    #f5f5f5 30%,
-    #eeeeee 60%,
-    #e8e8e8 100%
-  );
+  background-color: #f1f8e9; /* Added theme background color */
   position: relative;
   overflow: hidden;
   padding-bottom: 60px !important;
@@ -42,31 +36,28 @@
   margin-bottom: 45px;
 }
 
+/* --- CHANGES START HERE --- */
+
 /* Premium Professional Header - Full Width with Border */
 .best-offers-header {
   width: 100%;
   min-height: 85px;
-  background: linear-gradient(
-    135deg,
-    #1b5e20 0%,
-    #2e7d32 20%,
-    #388e3c 40%,
-    #43a047 60%,
-    #4caf50 80%,
-    #66bb6a 100%
-  );
+  /* 1. Simplified, darker gradient */
+  background: linear-gradient(135deg, #1b5e20 0%, #388e3c 100%);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   position: relative;
   overflow: hidden;
-  box-shadow: 0 4px 20px rgba(27, 94, 32, 0.25),
-    0 8px 40px rgba(27, 94, 32, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  /* 2. Softer shadow */
+  box-shadow: 0 4px 15px rgba(27, 94, 32, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
   border-top: 3px solid rgba(255, 255, 255, 0.2);
   border-bottom: 3px solid rgba(0, 0, 0, 0.15);
   padding: 20px 40px;
-  gap: 8px;
+  /* 3. Closer gap */
+  gap: 4px;
 }
 
 /* Animated Background Overlay */
@@ -115,15 +106,18 @@
 
 /* Main Header Title - Center Aligned */
 .header-title {
-  font-family: "Montserrat", "Roboto", "Arial Black", sans-serif !important;
-  font-size: 42px !important;
+  /* 4. Changed font to match 'Featured Collection' */
+  font-family: "Playfair Display", "Georgia", serif !important;
+  font-size: 40px !important;
   font-weight: 900 !important;
   color: #ffffff !important;
-  text-transform: uppercase;
-  letter-spacing: 6px;
+  /* 5. Changed to Capitalize */
+  text-transform: capitalize;
+  /* 6. Reduced letter-spacing */
+  letter-spacing: 2px;
   text-align: center;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2), 0 4px 8px rgba(0, 0, 0, 0.15),
-    0 6px 12px rgba(0, 0, 0, 0.1);
+  /* 7. Updated shadow */
+  text-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
   margin: 0 !important;
   line-height: 1.2 !important;
   z-index: 1;
@@ -132,58 +126,37 @@
   cursor: default;
 }
 
-/* Hover Effect - Green Underline Animation */
-.header-title::after {
-  content: "";
-  position: absolute;
-  bottom: -8px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 0;
-  height: 4px;
-  background: linear-gradient(90deg, #76ff03 0%, #64dd17 50%, #76ff03 100%);
-  border-radius: 2px;
-  box-shadow: 0 2px 10px rgba(118, 255, 3, 0.6), 0 0 20px rgba(118, 255, 3, 0.4);
-  transition: width 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-}
+/* 8. REMOVED ::after (underline) */
+/* .header-title::after { ... } */
 
-.header-title:hover::after {
-  width: 100%;
-  animation: underlineGlow 1.5s ease-in-out infinite alternate;
-}
+/* 9. REMOVED :hover::after (underline animation) */
+/* .header-title:hover::after { ... } */
 
-@keyframes underlineGlow {
-  0% {
-    box-shadow: 0 2px 10px rgba(118, 255, 3, 0.6),
-      0 0 20px rgba(118, 255, 3, 0.4);
-  }
-  100% {
-    box-shadow: 0 2px 15px rgba(118, 255, 3, 0.8),
-      0 0 30px rgba(118, 255, 3, 0.6);
-  }
-}
+/* 10. REMOVED @keyframes underlineGlow */
+/* @keyframes underlineGlow { ... } */
 
+/* 11. MODIFIED hover effect */
 .header-title:hover {
-  transform: translateY(-2px);
-  text-shadow: 0 3px 6px rgba(0, 0, 0, 0.25), 0 6px 12px rgba(0, 0, 0, 0.2),
-    0 9px 18px rgba(0, 0, 0, 0.15);
+  transform: scale(1.02);
+  text-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
 }
 
 /* Header Subtitle */
 .header-subtitle {
   font-family: "Poppins", "Roboto", sans-serif !important;
-  font-size: 16px !important;
-  font-weight: 600 !important;
-  color: rgba(255, 255, 255, 0.95) !important;
-  letter-spacing: 2px;
+  font-size: 17px !important; /* 12. Increased size */
+  font-weight: 500 !important; /* 13. Reduced weight */
+  color: rgba(255, 255, 255, 0.85) !important; /* 14. Softer color */
+  letter-spacing: 0.5px; /* 15. Reduced letter-spacing */
   text-align: center;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
   margin: 0 !important;
   line-height: 1 !important;
   z-index: 1;
   position: relative;
-  text-transform: uppercase;
+  text-transform: none; /* 16. Removed uppercase */
 }
+/* --- CHANGES END HERE --- */
 
 /* Carousel Container */
 .best-offers-carousel-container {
@@ -499,12 +472,12 @@
 
   .header-title {
     font-size: 38px !important;
-    letter-spacing: 5px;
+    letter-spacing: 2px;
   }
 
   .header-subtitle {
-    font-size: 15px !important;
-    letter-spacing: 1.5px;
+    font-size: 16px !important;
+    letter-spacing: 0.5px;
   }
 }
 
@@ -523,11 +496,11 @@
 
   .header-title {
     font-size: 34px !important;
-    letter-spacing: 4px;
+    letter-spacing: 1.5px;
   }
 
   .header-subtitle {
-    font-size: 14px !important;
+    font-size: 15px !important;
   }
 }
 
@@ -535,17 +508,16 @@
   .best-offers-header {
     min-height: 70px;
     padding: 16px 30px;
-    gap: 6px;
+    gap: 4px;
   }
 
   .header-title {
     font-size: 30px !important;
-    letter-spacing: 3px;
+    letter-spacing: 1.5px;
   }
 
   .header-subtitle {
-    font-size: 13px !important;
-    letter-spacing: 1px;
+    font-size: 14px !important;
   }
 
   .discount-ribbon {
@@ -590,11 +562,11 @@
 
   .header-title {
     font-size: 26px !important;
-    letter-spacing: 2px;
+    letter-spacing: 1px;
   }
 
   .header-subtitle {
-    font-size: 11px !important;
+    font-size: 13px !important;
   }
 
   .best-offers-header {
@@ -635,10 +607,10 @@
 
   .header-title {
     font-size: 22px !important;
-    letter-spacing: 1.5px;
+    letter-spacing: 1px;
   }
 
   .header-subtitle {
-    font-size: 10px !important;
+    font-size: 12px !important;
   }
 }

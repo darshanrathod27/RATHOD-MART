@@ -44,7 +44,9 @@ const FeaturedProducts = () => {
       initial={{ opacity: 0 }}
       animate={isInView ? { opacity: 1 } : {}}
       className="featured-products-section"
-      sx={{ py: 8, bgcolor: "#fafafa" }}
+      // --- CHANGE HERE ---
+      sx={{ pt: 0, pb: 8, bgcolor: "background.default" }} // Replaced py: 8
+      // --- END CHANGE ---
     >
       <Container maxWidth="xl">
         <Box sx={{ textAlign: "center", mb: 5 }}>
