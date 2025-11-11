@@ -1,5 +1,6 @@
 // src/pages/Home.jsx
 import React, { useState, useMemo, useEffect } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Box, Container, Typography, Grid, Fab, Chip } from "@mui/material";
 import { FilterList } from "@mui/icons-material";
 import { motion, AnimatePresence } from "framer-motion";
@@ -16,6 +17,9 @@ import AdvancedFilterDrawer from "../components/filter/AdvancedFilterDrawer";
 import api from "../data/api";
 
 const Home = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [showAllProducts, setShowAllProducts] = useState(false);
 
@@ -32,6 +36,22 @@ const Home = () => {
   const [allProducts, setAllProducts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(null);
+
+  // Smooth-scroll to a section when navigated with { state: { scrollTo: 'id' } }
+  useEffect(() => {
+    if (location.state?.scrollTo) {
+      const sectionId = location.state.scrollTo;
+      // Wait a tick so the DOM is ready (esp. after route change)
+      const t = setTimeout(() => {
+        const section = document.getElementById(sectionId);
+        if (section) section.scrollIntoView({ behavior: "smooth" });
+        // Clear state so refresh/back doesn't re-trigger
+        navigate(location.pathname, { replace: true, state: {} });
+      }, 120);
+
+      return () => clearTimeout(t);
+    }
+  }, [location, navigate]);
 
   const sortMapping = (key) => {
     switch (key) {

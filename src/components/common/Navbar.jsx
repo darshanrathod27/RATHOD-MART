@@ -146,10 +146,14 @@ const Navbar = () => {
     setActiveLink(item.name);
   };
 
+  // <-- Your updated handleScrollToSection (keeps state navigation when not on home)
   const handleScrollToSection = (sectionId) => {
+    // Check if we are on the homepage
     if (location.pathname !== "/") {
+      // If not on home, navigate to home and pass the sectionId in state
       navigate("/", { state: { scrollTo: sectionId } });
     } else {
+      // If already on home, just scroll
       document
         .getElementById(sectionId)
         ?.scrollIntoView({ behavior: "smooth" });
@@ -187,7 +191,6 @@ const Navbar = () => {
   const handleLogout = async () => {
     setUserMenuAnchor(null);
     try {
-      // ensure api.post is available (api.js should expose post)
       await api.post("/users/logout");
       dispatch(logoutAction());
       toast.success("Logged out successfully");

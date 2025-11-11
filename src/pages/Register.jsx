@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { useDispatch, useSelector } from "react-redux";
+import React, { useState } from "react";
+import { useDispatch } from "react-redux";
 import { useNavigate, Link } from "react-router-dom";
 import { setCredentials } from "../store/authSlice";
 import api from "../data/api";
@@ -25,13 +25,8 @@ const Register = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
-  const { isAuthenticated } = useSelector((state) => state.auth);
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      navigate("/");
-    }
-  }, [isAuthenticated, navigate]);
+  // The useEffect that checked for isAuthenticated is REMOVED
+  // GuestRoute.jsx now handles this.
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -45,7 +40,7 @@ const Register = () => {
 
       dispatch(setCredentials(res.data));
       toast.success(`Welcome, ${res.data.name}!`);
-      navigate("/");
+      navigate("/"); // Navigate to home after successful registration
     } catch (err) {
       toast.error(err.response?.data?.message || "Registration Failed");
     }
@@ -104,7 +99,8 @@ const Register = () => {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
-          />
+          />{" "}
+          {/* <-- This was the line with the error. Fixed! */}
         </div>
         <div className="inputBox">
           <input

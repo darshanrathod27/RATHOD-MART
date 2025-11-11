@@ -1,20 +1,20 @@
-import React, { useState, useEffect } from "react";
-import { useDispatch, useSelector } from "react-redux";
-import { useNavigate, Link } from "react-router-dom";
+import React, { useState } from "react";
+import { useDispatch } from "react-redux";
+import { useNavigate, Link, useLocation } from "react-router-dom";
 import { setCredentials } from "../store/authSlice";
 import api from "../data/api"; // Your customer-facing api helper
 import toast from "react-hot-toast";
 
 import "./NatureLogin.css"; // This import will now work
 
-// Import the images (assuming they are still in the original folder)
+// Import the images
 import bg from "../Nature login form/bg.jpg";
 import girl from "../Nature login form/girl.png";
 import trees from "../Nature login form/trees.png";
 import leaf01 from "../Nature login form/leaf_01.png";
 import leaf02 from "../Nature login form/leaf_02.png";
 import leaf03 from "../Nature login form/leaf_03.png";
-import leaf04 from "../Nature login form/leaf_04.png";
+import leaf04 from "../Nature login form/leaf_04.png"; // <-- This line is now fixed
 
 const Login = () => {
   const [email, setEmail] = useState("");
@@ -23,15 +23,13 @@ const Login = () => {
 
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const location = useLocation(); // Get location info
 
-  const { isAuthenticated } = useSelector((state) => state.auth);
+  // Get the 'from' path, defaulting to homepage
+  const from = location.state?.from?.pathname || "/";
 
-  // If already logged in, redirect to home
-  useEffect(() => {
-    if (isAuthenticated) {
-      navigate("/");
-    }
-  }, [isAuthenticated, navigate]);
+  // The useEffect that checked for isAuthenticated is REMOVED
+  // GuestRoute.jsx now handles this.
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -42,7 +40,9 @@ const Login = () => {
 
       dispatch(setCredentials(res.data));
       toast.success(`Welcome back, ${res.data.name}!`);
-      navigate("/");
+
+      // Navigate to the 'from' path
+      navigate(from, { replace: true });
     } catch (err) {
       toast.error(err.response?.data?.message || "Login Failed");
     }
