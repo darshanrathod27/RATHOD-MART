@@ -10,7 +10,7 @@ import ProductCard from "./ProductCard";
 import "./BestOffers.css";
 import api from "../../data/api";
 
-const MIN_DISCOUNT = 40;
+// const MIN_DISCOUNT = 40; // <-- REMOVED
 
 const BestOffers = () => {
   const ref = useRef(null);
@@ -26,18 +26,15 @@ const BestOffers = () => {
       setLoading(true);
       setError(null);
       try {
-        let offers = [];
-        try {
-          // first try server-side helper
-          offers = await api.fetchOfferProducts({
-            minDiscount: MIN_DISCOUNT,
-            limit: 48,
-          });
-        } catch (e) {
-          const all = await api.fetchProducts({ limit: 48 });
-          offers = all.filter((p) => (p.discountPercent || 0) >= MIN_DISCOUNT);
-        }
+        // --- MODIFICATION: Fetching by isBestOffer=true ---
+        const offers = await api.fetchProducts({
+          isBestOffer: "true", // Fetch based on the new backend field
+          limit: 24,
+          sortBy: "createdAt",
+          sortOrder: "desc",
+        });
         if (mounted) setProducts(offers);
+        // --- END MODIFICATION ---
       } catch (err) {
         console.error("BestOffers error:", err);
         if (mounted) setError("Failed to load offers");
