@@ -10,7 +10,14 @@ import {
   Chip,
   Fab,
 } from "@mui/material";
-import { Home, NavigateNext, FilterList } from "@mui/icons-material";
+// --- CHANGE: Import TrendingUp icon ---
+import {
+  Home,
+  NavigateNext,
+  FilterList,
+  TrendingUp,
+} from "@mui/icons-material";
+// --- END CHANGE ---
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -22,6 +29,9 @@ const CategoryProducts = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const categoryId = searchParams.get("category") || "";
+  // --- CHANGE: Check for 'trending' param ---
+  const isTrendingPage = searchParams.get("trending") === "true";
+  // --- END CHANGE ---
 
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [filters, setFilters] = useState({
@@ -58,7 +68,16 @@ const CategoryProducts = () => {
       try {
         const { sortBy, sortOrder } = sortMapping(filters.sortBy);
         const params = { limit: 120, sortBy, sortOrder };
-        if (categoryId) params.category = categoryId;
+
+        // --- CHANGE: Set API params based on page type ---
+        if (isTrendingPage) {
+          params.trending = "true";
+          setCategoryName("Trending Products");
+        } else if (categoryId) {
+          params.category = categoryId;
+        }
+        // --- END CHANGE ---
+
         if (filters.brands?.length) params.brands = filters.brands;
         if (Array.isArray(filters.priceRange)) {
           params.minPrice = filters.priceRange[0];
@@ -68,11 +87,18 @@ const CategoryProducts = () => {
         const data = await api.fetchProducts(params);
         if (!mounted) return;
         setAllProducts(data);
-        setCategoryName(data?.[0]?.category?.name || "");
+
+        // --- CHANGE: Only set category name if not on trending page ---
+        if (!isTrendingPage && data?.[0]?.category?.name) {
+          setCategoryName(data[0].category.name);
+        } else if (!isTrendingPage && !categoryId) {
+          setCategoryName("All Products");
+        }
+        // --- END CHANGE ---
       } catch (e) {
         console.error("CategoryProducts error:", e);
         if (!mounted) return;
-        setErr("Failed to load category products");
+        setErr("Failed to load products");
       } finally {
         if (mounted) setLoading(false);
       }
@@ -80,12 +106,22 @@ const CategoryProducts = () => {
     return () => {
       mounted = false;
     };
-  }, [categoryId, filters.sortBy, filters.brands, filters.priceRange]);
+    // --- CHANGE: Added isTrendingPage to dependencies ---
+  }, [
+    categoryId,
+    isTrendingPage,
+    filters.sortBy,
+    filters.brands,
+    filters.priceRange,
+  ]);
+  // --- END CHANGE ---
 
   const filteredProducts = useMemo(() => {
     let list = Array.isArray(allProducts) ? [...allProducts] : [];
 
-    if (filters.categories?.length) {
+    // --- CHANGE: Don't filter by category if on trending page ---
+    if (filters.categories?.length && !isTrendingPage) {
+      // --- END CHANGE ---
       list = list.filter((p) => {
         const pid = p?.category?._id || p?.category;
         return pid && filters.categories.includes(String(pid));
@@ -121,7 +157,7 @@ const CategoryProducts = () => {
     }
 
     return list;
-  }, [allProducts, filters]);
+  }, [allProducts, filters, isTrendingPage]); // Added isTrendingPage
 
   const activeFiltersCount =
     (filters.brands?.length || 0) +
@@ -140,14 +176,18 @@ const CategoryProducts = () => {
     );
   };
 
+  // --- CHANGE: Dynamic Page Title ---
+  const pageTitle = isTrendingPage
+    ? "Trending Products"
+    : categoryName || "All Products";
+  // --- END CHANGE ---
+
   return (
     <Box
       component={motion.div}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      // --- CHANGE HERE ---
       sx={{ bgcolor: "background.default", minHeight: "100vh", pt: 12, pb: 8 }}
-      // --- END CHANGE ---
     >
       <Container maxWidth="xl">
         <Breadcrumbs
@@ -162,9 +202,17 @@ const CategoryProducts = () => {
             <Home sx={{ mr: 0.5 }} fontSize="inherit" />
             Home
           </Link>
-          <Typography color="text.primary" sx={{ fontWeight: 600 }}>
-            {categoryName || "All Products"}
+          {/* --- CHANGE: Conditional Breadcrumb --- */}
+          <Typography
+            color="text.primary"
+            sx={{ fontWeight: 600, display: "flex", alignItems: "center" }}
+          >
+            {isTrendingPage && (
+              <TrendingUp sx={{ mr: 0.5, fontSize: "1.2rem" }} />
+            )}
+            {pageTitle}
           </Typography>
+          {/* --- END CHANGE --- */}
         </Breadcrumbs>
 
         <Box sx={{ mb: 4 }}>
@@ -178,7 +226,7 @@ const CategoryProducts = () => {
               mb: 1,
             }}
           >
-            {categoryName || "All Products"}
+            {pageTitle}
           </Typography>
           <Typography variant="body1" color="text.secondary">
             {loading

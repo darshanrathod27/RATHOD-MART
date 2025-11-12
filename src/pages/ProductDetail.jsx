@@ -41,6 +41,8 @@ import {
   Close,
   ShoppingBag,
   Star,
+  ArrowBackIosNew,
+  ArrowForwardIos,
 } from "@mui/icons-material";
 import { motion } from "framer-motion";
 import { useParams, useNavigate } from "react-router-dom";
@@ -51,6 +53,7 @@ import ProductCard from "../components/home/ProductCard.jsx";
 import api from "../data/api.js";
 import "./ProductDetail.css";
 
+/* PriceBlock unchanged */
 const PriceBlock = ({
   basePrice,
   discountPrice,
@@ -61,12 +64,10 @@ const PriceBlock = ({
     typeof currentPrice !== "undefined" && currentPrice !== null
       ? currentPrice
       : discountPrice ?? basePrice;
-
   const hasDiscount =
     typeof discountPrice === "number" &&
     discountPrice > 0 &&
     discountPrice < basePrice;
-
   return (
     <Box className="price-section">
       <Typography className="current-price">
@@ -87,6 +88,9 @@ const PriceBlock = ({
   );
 };
 
+const ZOOM_SCALE = 2.8; // how much bigger the zoom image is
+const ZOOM_SIZE = 600; // px square viewport
+
 const ProductDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -104,18 +108,34 @@ const ProductDetail = () => {
   const [currentImages, setCurrentImages] = useState([]);
   const [currentPrice, setCurrentPrice] = useState(null);
   const [selectedImage, setSelectedImage] = useState(0);
+
+  // Zoom / modal state
   const [zoomModalOpen, setZoomModalOpen] = useState(false);
-  const [mousePosition, setMousePosition] = useState({ x: 50, y: 50 });
+  const [modalIndex, setModalIndex] = useState(0);
+
+  // refs for mapping mouse -> image
+  const containerRef = useRef(null); // wrapper of the visible image area
+  const imgRef = useRef(null); // the <img> element
+
+  // normalized mouse position (0..1) relative to displayed image
+  const [mouseNorm, setMouseNorm] = useState({ x: 0.5, y: 0.5 });
+
+  // lens position (pixels) so it renders exactly under cursor
+  const [lensLeftPx, setLensLeftPx] = useState(0);
+  const [lensTopPx, setLensTopPx] = useState(0);
   const [isHovering, setIsHovering] = useState(false);
+
+  // zoomed image positioning computed in mouse handler
+  const [zoomImgStyle, setZoomImgStyle] = useState(null);
+
+  // reviews & rating
   const [userRating, setUserRating] = useState(0);
   const [ratingComment, setRatingComment] = useState("");
-  // --- NEW (Review State) ---
   const [reviews, setReviews] = useState([]);
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
 
-  const imageRef = useRef(null);
-
+  // Fetch product, variants, related, reviews
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -123,7 +143,6 @@ const ProductDetail = () => {
       try {
         const data = await api.fetchProductById(id);
         if (!mounted) return;
-
         setProduct(data);
         setCurrentImages(
           data.generalImages && data.generalImages.length > 0
@@ -133,6 +152,7 @@ const ProductDetail = () => {
         setCurrentStock(data.totalStock ?? data.stock ?? 0);
         setCurrentPrice(data.price ?? data.basePrice ?? null);
 
+        // variants
         try {
           const invVariants = await api.fetchProductVariants(id);
           let merged = [];
@@ -158,7 +178,6 @@ const ProductDetail = () => {
               images: v.images || [],
             }));
           }
-
           setVariants(merged);
           if (merged.length > 0) {
             const def = merged.find((v) => v.stock > 0) || merged[0];
@@ -168,6 +187,7 @@ const ProductDetail = () => {
           console.warn("Variant fetch failed:", err);
         }
 
+        // related
         const catId = data?.category?._id || data?.category || null;
         if (catId) {
           const rel = await api.fetchProducts({ category: catId, limit: 12 });
@@ -179,7 +199,8 @@ const ProductDetail = () => {
         setLoading(false);
       }
     })();
-    // --- NEW (Fetch Reviews) ---
+
+    // reviews
     (async () => {
       setReviewsLoading(true);
       try {
@@ -191,7 +212,7 @@ const ProductDetail = () => {
         if (mounted) setReviewsLoading(false);
       }
     })();
-    // --- END NEW ---
+
     return () => {
       mounted = false;
     };
@@ -247,7 +268,6 @@ const ProductDetail = () => {
       setCurrentPrice(prod?.price ?? null);
       return;
     }
-
     setSelectedVariant(variant);
     setCurrentStock(variant.stock ?? prod?.stock ?? 0);
     setCurrentPrice(variant.price ?? prod?.price ?? null);
@@ -256,28 +276,72 @@ const ProductDetail = () => {
     else setCurrentImages(prod?.generalImages || [prod?.image]);
   };
 
-  const handleMouseMove = useCallback((e) => {
-    if (!imageRef.current) return;
-    const rect = imageRef.current.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
-    setMousePosition({ x, y });
-  }, []);
+  // precise mouse handler: compute normalized coords and pixel coords for lens,
+  // and compute zoom image offsets in pixels (using image natural size)
+  const handleMouseMove = useCallback(
+    (e) => {
+      const imgEl = imgRef.current;
+      const containerEl = containerRef.current;
+      if (!imgEl || !containerEl) return;
 
-  // --- MODIFIED (Handle Rating Submit) ---
+      const imgRect = imgEl.getBoundingClientRect();
+
+      // normalized coords within displayed image (0..1)
+      const nx = (e.clientX - imgRect.left) / imgRect.width;
+      const ny = (e.clientY - imgRect.top) / imgRect.height;
+      const cx = Math.max(0, Math.min(1, nx));
+      const cy = Math.max(0, Math.min(1, ny));
+      setMouseNorm({ x: cx, y: cy });
+
+      // lens pixel position relative to container
+      const containerRect = containerEl.getBoundingClientRect();
+      // compute cursor position relative to container top-left in px
+      const pxInContainerX = e.clientX - containerRect.left;
+      const pxInContainerY = e.clientY - containerRect.top;
+      setLensLeftPx(Math.round(pxInContainerX));
+      setLensTopPx(Math.round(pxInContainerY));
+
+      // For zoom: use natural image size (not CSS-scaled size)
+      const natW = imgEl.naturalWidth || imgRect.width;
+      const natH = imgEl.naturalHeight || imgRect.height;
+
+      const pxImage = cx * natW;
+      const pyImage = cy * natH;
+
+      const imgWzoom = Math.round(natW * ZOOM_SCALE);
+      const imgHzoom = Math.round(natH * ZOOM_SCALE);
+
+      const offsetX = Math.round(pxImage * ZOOM_SCALE - ZOOM_SIZE / 2);
+      const offsetY = Math.round(pyImage * ZOOM_SCALE - ZOOM_SIZE / 2);
+
+      const maxOffsetX = Math.max(0, imgWzoom - ZOOM_SIZE);
+      const maxOffsetY = Math.max(0, imgHzoom - ZOOM_SIZE);
+      const clampedX = Math.max(0, Math.min(maxOffsetX, offsetX));
+      const clampedY = Math.max(0, Math.min(maxOffsetY, offsetY));
+
+      // left/top for absolute-positioned zoom image (negative to shift image)
+      setZoomImgStyle({
+        width: `${imgWzoom}px`,
+        height: `${imgHzoom}px`,
+        left: `${-clampedX}px`,
+        top: `${-clampedY}px`,
+      });
+    },
+    [setMouseNorm]
+  );
+
+  const handleMouseEnter = () => setIsHovering(true);
+  const handleMouseLeave = () => setIsHovering(false);
+
   const handleSubmitRating = async () => {
-    if (userRating === 0) {
-      toast.error("Please select a rating!");
-      return;
-    }
+    if (userRating === 0) return toast.error("Please select a rating!");
     setSubmitLoading(true);
     try {
       const reviewData = {
         rating: userRating,
         comment: ratingComment,
-        userName: "Guest", // Aap yahan logged in user ka naam daal sakte hain
+        userName: "Guest",
       };
-      // API call
       await api.submitReview(product.id, reviewData);
       toast.success("Review submitted! Waiting for approval.");
       setUserRating(0);
@@ -291,13 +355,23 @@ const ProductDetail = () => {
     }
   };
 
+  // modal viewer handlers
+  const openZoomModalAt = (index) => {
+    setModalIndex(index);
+    setZoomModalOpen(true);
+  };
+  const closeZoomModal = () => setZoomModalOpen(false);
+  const nextModalImage = () =>
+    setModalIndex((i) => (i + 1) % Math.max(1, gallery.length));
+  const prevModalImage = () =>
+    setModalIndex((i) => (i - 1 + gallery.length) % gallery.length);
+
   if (loading)
     return (
       <Container sx={{ py: 10 }}>
         <Typography>Loading product…</Typography>
       </Container>
     );
-
   if (err || !product)
     return (
       <Container sx={{ py: 10 }}>
@@ -310,14 +384,12 @@ const ProductDetail = () => {
   return (
     <Box className="product-detail-page">
       <Container maxWidth="xl">
-        {/* Breadcrumb */}
         <Breadcrumbs
           separator={<NavigateNext fontSize="small" />}
           className="breadcrumbs"
         >
           <Link component="button" onClick={() => navigate("/")}>
-            <Home sx={{ mr: 0.5, fontSize: "1.2rem" }} />
-            Home
+            <Home sx={{ mr: 0.5, fontSize: "1.2rem" }} /> Home
           </Link>
           {product.category?.name && (
             <Link
@@ -351,23 +423,66 @@ const ProductDetail = () => {
                 )}
 
                 <Box
-                  ref={imageRef}
+                  ref={containerRef}
                   className="main-image-container"
                   onMouseMove={handleMouseMove}
-                  onMouseEnter={() => setIsHovering(true)}
-                  onMouseLeave={() => setIsHovering(false)}
-                  onClick={() => setZoomModalOpen(true)}
+                  onMouseEnter={handleMouseEnter}
+                  onMouseLeave={handleMouseLeave}
+                  onClick={() => openZoomModalAt(selectedImage)}
                 >
                   {currentImage ? (
                     <img
+                      ref={imgRef}
                       src={currentImage}
                       alt={product.name}
                       className="main-product-image"
+                      draggable={false}
                     />
                   ) : (
                     <Typography>No Image</Typography>
                   )}
+
+                  {/* Lens: use pixel positioning for perfect match */}
+                  {isHovering && (
+                    <div
+                      className="zoom-lens"
+                      style={{
+                        left: `${lensLeftPx}px`,
+                        top: `${lensTopPx}px`,
+                        transform: "translate(-50%, -50%)",
+                      }}
+                    />
+                  )}
                 </Box>
+
+                {/* Side zoom display (desktop only) */}
+                {isHovering && currentImage && zoomImgStyle && (
+                  <Box
+                    className="side-zoom-display"
+                    sx={{ display: { xs: "none", md: "block" } }}
+                  >
+                    <div
+                      style={{
+                        position: "relative",
+                        width: `${ZOOM_SIZE}px`,
+                        height: `${ZOOM_SIZE}px`,
+                        overflow: "hidden",
+                      }}
+                    >
+                      <img
+                        src={currentImage}
+                        alt="zoom"
+                        style={{
+                          position: "absolute",
+                          ...zoomImgStyle,
+                          imageRendering: "-webkit-optimize-contrast",
+                          willChange: "left, top",
+                        }}
+                        draggable={false}
+                      />
+                    </div>
+                  </Box>
+                )}
 
                 <Box className="thumbnail-gallery">
                   {gallery.map((img, i) => (
@@ -377,6 +492,7 @@ const ProductDetail = () => {
                         selectedImage === i ? "active" : ""
                       }`}
                       onClick={() => setSelectedImage(i)}
+                      tabIndex={0}
                     >
                       <img src={img} alt={`Thumb ${i + 1}`} />
                     </Box>
@@ -397,7 +513,6 @@ const ProductDetail = () => {
                   {product.name}
                 </Typography>
 
-                {/* Rating + Stock */}
                 <Box className="rating-section">
                   <Rating
                     value={product.rating || 0}
@@ -436,7 +551,6 @@ const ProductDetail = () => {
 
                 <Divider sx={{ my: 3 }} />
 
-                {/* Variants */}
                 {variants.length > 0 && (
                   <Box sx={{ mb: 2 }}>
                     <Typography sx={{ fontWeight: 700, mb: 1 }}>
@@ -461,7 +575,7 @@ const ProductDetail = () => {
                           }}
                         >
                           {v.color?.name || ""}{" "}
-                          {v.size?.name ? ` / ${v.size.name}` : ""}
+                          {v.size?.name ? ` / ${v.size.name}` : ""}{" "}
                           {Number(v.stock ?? 0) <= 0 ? " — Out" : ""}
                         </Button>
                       ))}
@@ -469,7 +583,6 @@ const ProductDetail = () => {
                   </Box>
                 )}
 
-                {/* Actions */}
                 <Box className="action-buttons">
                   <Button
                     variant="contained"
@@ -522,7 +635,7 @@ const ProductDetail = () => {
           </Grid>
         </Paper>
 
-        {/* --- NEW (Long Description Section) --- */}
+        {/* Long description */}
         {product.description && (
           <Paper
             className="product-description-section"
@@ -536,16 +649,15 @@ const ProductDetail = () => {
               sx={{
                 color: "text.secondary",
                 lineHeight: 1.8,
-                whiteSpace: "pre-wrap", // Yeh formatting (jaise new lines) ko rakhega
+                whiteSpace: "pre-wrap",
               }}
             >
               {product.description}
             </Typography>
           </Paper>
         )}
-        {/* --- END NEW --- */}
 
-        {/* --- MODIFIED (Rating & Review Section) --- */}
+        {/* Reviews */}
         <Paper
           className="user-rating-section"
           sx={{ p: { xs: 2, md: 4 }, mt: 4 }}
@@ -554,7 +666,6 @@ const ProductDetail = () => {
             Ratings & Reviews
           </Typography>
 
-          {/* Review Input */}
           <Box mb={4}>
             <Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }}>
               Leave a review
@@ -588,8 +699,6 @@ const ProductDetail = () => {
           </Box>
 
           <Divider sx={{ mb: 4 }} />
-
-          {/* Review List */}
           <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
             Customer Reviews ({product.reviews || 0})
           </Typography>
@@ -602,7 +711,7 @@ const ProductDetail = () => {
           ) : (
             <List sx={{ width: "100%", bgcolor: "background.paper" }}>
               {reviews.map((review, index) => (
-                <React.Fragment key={review._id}>
+                <React.Fragment key={review._id || index}>
                   <ListItem alignItems="flex-start">
                     <ListItemAvatar>
                       <Avatar>
@@ -640,7 +749,9 @@ const ProductDetail = () => {
                             color="text.secondary"
                             sx={{ mt: 1, display: "block" }}
                           >
-                            {new Date(review.createdAt).toLocaleDateString()}
+                            {review.createdAt
+                              ? new Date(review.createdAt).toLocaleDateString()
+                              : ""}
                           </Typography>
                         </>
                       }
@@ -654,9 +765,8 @@ const ProductDetail = () => {
             </List>
           )}
         </Paper>
-        {/* --- END MODIFIED --- */}
 
-        {/* Related Products */}
+        {/* Related */}
         {related.length > 0 && (
           <Box className="related-products-section">
             <Typography variant="h5" className="related-title">
@@ -664,7 +774,7 @@ const ProductDetail = () => {
             </Typography>
             <Grid container spacing={3}>
               {related.map((p) => (
-                <Grid item xs={12} sm={6} md={3} key={p.id}>
+                <Grid item xs={12} sm={6} md={3} key={p.id || p._id}>
                   <ProductCard product={p} />
                 </Grid>
               ))}
@@ -672,28 +782,72 @@ const ProductDetail = () => {
           </Box>
         )}
 
-        {/* Zoom Modal */}
+        {/* ZOOM / VIEW MODAL */}
         <Modal
           open={zoomModalOpen}
-          onClose={() => setZoomModalOpen(false)}
+          onClose={closeZoomModal}
           closeAfterTransition
           BackdropComponent={Backdrop}
           BackdropProps={{ timeout: 400 }}
         >
-          <Box className="zoom-modal">
-            <IconButton
-              className="zoom-modal-close"
-              onClick={() => setZoomModalOpen(false)}
-            >
+          {/* IMPORTANT: modal container background set transparent in CSS to remove the big white outer panel */}
+          <Box className="zoom-modal" role="dialog" aria-modal="true">
+            <IconButton className="zoom-modal-close" onClick={closeZoomModal}>
               <Close />
             </IconButton>
-            {currentImage && (
+
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                position: "relative",
+              }}
+            >
+              <IconButton
+                onClick={prevModalImage}
+                sx={{
+                  position: "absolute",
+                  left: 8,
+                  zIndex: 20,
+                  bgcolor: "rgba(255,255,255,0.85)",
+                }}
+              >
+                <ArrowBackIosNew />
+              </IconButton>
               <img
-                src={currentImage}
-                alt={product.name}
+                src={gallery[modalIndex]}
+                alt={`Zoom ${modalIndex + 1}`}
                 className="zoom-modal-image"
+                draggable={false}
               />
-            )}
+              <IconButton
+                onClick={nextModalImage}
+                sx={{
+                  position: "absolute",
+                  right: 8,
+                  zIndex: 20,
+                  bgcolor: "rgba(255,255,255,0.85)",
+                }}
+              >
+                <ArrowForwardIos />
+              </IconButton>
+            </Box>
+
+            <Box className="zoom-modal-thumbnails" sx={{ mt: 1 }}>
+              {gallery.map((img, i) => (
+                <Box
+                  key={i}
+                  className={`modal-thumbnail ${
+                    i === modalIndex ? "active" : ""
+                  }`}
+                  onClick={() => setModalIndex(i)}
+                  tabIndex={0}
+                >
+                  <img src={img} alt={`Thumb ${i + 1}`} />
+                </Box>
+              ))}
+            </Box>
           </Box>
         </Modal>
       </Container>

@@ -91,8 +91,17 @@ const Navbar = () => {
   const debouncedSearch = useDebounce(searchValue, 300);
 
   useEffect(() => {
-    setActiveLink(location.pathname);
-  }, [location.pathname]);
+    // --- CHANGE: Make 'Trending' active if on that route ---
+    if (
+      location.pathname === "/category" &&
+      location.search.includes("trending=true")
+    ) {
+      setActiveLink("Trending");
+    } else {
+      setActiveLink(location.pathname);
+    }
+  }, [location.pathname, location.search]);
+  // --- END CHANGE ---
 
   const headerVariants = {
     scrolled: {
@@ -126,16 +135,15 @@ const Navbar = () => {
 
   useEffect(() => {
     if (debouncedSearch && debouncedSearch.length > 1) {
-      const mockSuggestions = [
-        "Premium Headphones",
-        "Smart Watch Pro",
-        "Wireless Earbuds",
-      ];
-      setSearchSuggestions(
-        mockSuggestions.filter((item) =>
-          item.toLowerCase().includes(debouncedSearch.toLowerCase())
-        )
-      );
+      // This is still mock, replace with API call when ready
+      api
+        .fetchProducts({ search: debouncedSearch, limit: 5 })
+        .then((products) => {
+          setSearchSuggestions(products.map((p) => p.name));
+        })
+        .catch((e) => {
+          setSearchSuggestions([]);
+        });
     } else {
       setSearchSuggestions([]);
     }
@@ -157,11 +165,16 @@ const Navbar = () => {
     if (item.action) {
       item.action(e);
     }
-    if (item.name !== "Categories") {
+    // --- CHANGE: Special handling for 'Trending' ---
+    if (item.name === "Trending") {
+      setActiveLink("Trending");
+    } else if (item.name !== "Categories") {
       setActiveLink(item.name);
     }
+    // --- END CHANGE ---
   };
 
+  // This function is no longer used for "Trending", but kept for "Categories"
   const handleScrollToSection = (sectionId) => {
     if (location.pathname !== "/") {
       navigate("/", { state: { scrollTo: sectionId } });
@@ -169,17 +182,6 @@ const Navbar = () => {
       const el = document.getElementById(sectionId);
       if (el) {
         el.scrollIntoView({ behavior: "smooth" });
-      } else {
-        // Fallback agar ID (jo maine pichli baar add ki thi) abhi tak DOM mein nahi hai
-        // ID `categories-section` hai Categories.jsx mein
-        api.fetchCategories({ limit: 20, sortBy: "productsCount" }).then(() => {
-          // force re-render/wait a tick
-          setTimeout(() => {
-            document
-              .getElementById(sectionId)
-              ?.scrollIntoView({ behavior: "smooth" });
-          }, 100);
-        });
       }
     }
   };
@@ -196,11 +198,13 @@ const Navbar = () => {
       icon: <Category />,
       action: (e) => setCategoryMenuAnchor(e.currentTarget),
     },
+    // --- CHANGE: "Trending" button now navigates to a special page ---
     {
       name: "Trending",
       icon: <TrendingUp />,
-      action: () => handleScrollToSection("trending-section"), // Yeh 'trending-section' ID BestOffers.jsx ya FeaturedProducts.jsx mein honi chahiye
+      action: () => navigate("/category?trending=true"), // Changed from handleScrollToSection
     },
+    // --- END CHANGE ---
   ];
 
   const handleApplyFilters = (newFilters) => {
@@ -315,14 +319,17 @@ const Navbar = () => {
             {!isMobile && (
               <Box sx={{ display: "flex", gap: 0.5 }}>
                 {navigationItems.map((item) => {
+                  // --- CHANGE: Updated isActive logic ---
                   const isActive =
-                    activeLink === item.name || activeLink === item.path;
+                    item.name === "Trending"
+                      ? activeLink === "Trending"
+                      : activeLink === item.name || activeLink === item.path;
+                  // --- END CHANGE ---
+
                   return (
                     <Button
                       key={item.name}
-                      // --- CHANGE 1: onClick, not onMouseEnter ---
                       onClick={(e) => handleNavClick(item, e)}
-                      // --- END CHANGE 1 ---
                       className="nav-link"
                       sx={{
                         color: "text.primary",
@@ -357,7 +364,6 @@ const Navbar = () => {
 
             <Box sx={{ flexGrow: 1 }} />
 
-            {/* ... (Baaki poora Navbar.jsx code waisa hi rahega) ... */}
             {/* Search Bar */}
             <Box
               component="form"
@@ -590,9 +596,7 @@ const Navbar = () => {
         PaperProps={{
           sx: {
             mt: 2,
-            // --- CHANGE 2: Square corners ---
-            borderRadius: 0, // Was 3
-            // --- END CHANGE 2 ---
+            borderRadius: 3,
             minWidth: 220,
             backdropFilter: "blur(20px)",
             border: "1px solid rgba(255, 255, 255, 0.3)",
@@ -650,17 +654,10 @@ const Navbar = () => {
         anchorEl={categoryMenuAnchor}
         open={Boolean(categoryMenuAnchor)}
         onClose={() => setCategoryMenuAnchor(null)}
-        // --- CHANGE 3: Removed onMouseLeave ---
-        // MenuListProps={{
-        //   onMouseLeave: () => setCategoryMenuAnchor(null),
-        // }}
-        // --- END CHANGE 3 ---
         PaperProps={{
           sx: {
             mt: 2,
-            // --- CHANGE 4: Square corners ---
-            borderRadius: 0, // Was 3
-            // --- END CHANGE 4 ---
+            borderRadius: 3,
             minWidth: 260,
             maxHeight: 400,
             backdropFilter: "blur(20px)",
@@ -688,7 +685,7 @@ const Navbar = () => {
               variant="caption"
               sx={{ ml: 2, color: "text.secondary", fontWeight: 600 }}
             >
-              {cat.count} {/* <-- Live count from backend */}
+              {cat.count}
             </Typography>
           </MenuItem>
         ))}
