@@ -19,7 +19,6 @@ import {
   Remove,
   Delete,
   ShoppingCartOutlined,
-  LocalShipping,
   ArrowForward,
   LocalOffer, // 3. Import Icon
   Cancel, // 3. Import Icon

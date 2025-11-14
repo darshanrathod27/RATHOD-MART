@@ -1,4 +1,11 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+// rathod-mart/src/context/WishlistContext.jsx
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+} from "react";
 import { useSelector } from "react-redux";
 import api from "../data/api";
 import toast from "react-hot-toast";
@@ -15,70 +22,68 @@ export const useWishlist = () => {
 export const WishlistProvider = ({ children }) => {
   const { isAuthenticated } = useSelector((state) => state.auth);
 
-  const [wishlistItems, setWishlistItems] = useState(() => {
-    // Guest wishlist is still loaded from localStorage
-    if (!isAuthenticated) {
-      const saved = localStorage.getItem("guestWishlistItems");
-      return saved ? JSON.parse(saved) : [];
-    }
-    return []; // Logged-in users will fetch from API
-  });
-
+  const [wishlistItems, setWishlistItems] = useState([]);
   const [isWishlistOpen, setIsWishlistOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // --- REFACTORED: Function to fetch wishlist from server ---
+  const fetchWishlist = useCallback(async () => {
+    if (!isAuthenticated) return;
+    setLoading(true);
+    try {
+      const { data } = await api.get("/wishlist");
+      setWishlistItems(data.data || []);
+    } catch (err) {
+      console.error("Failed to fetch wishlist", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [isAuthenticated]);
 
   // Effect to fetch/sync wishlist on auth change
   useEffect(() => {
     const syncWishlist = async () => {
       if (isAuthenticated) {
-        // --- USER IS LOGGED IN ---
         setLoading(true);
         try {
-          // 1. Fetch user's wishlist from DB
-          const { data: dbWishlist } = await api.get("/wishlist");
-
-          // 2. Get guest wishlist from localStorage
           const guestItems = JSON.parse(
             localStorage.getItem("guestWishlistItems") || "[]"
           );
 
           if (guestItems.length > 0) {
-            // 3. Merge guest items with DB
+            const guestIds = guestItems.map((item) => item.id || item._id);
             const { data: mergedWishlist } = await api.post("/wishlist/merge", {
-              items: guestItems.map((item) => item.id || item._id), // Send array of product IDs
+              items: guestIds,
             });
             setWishlistItems(mergedWishlist.data || []);
-            localStorage.removeItem("guestWishlistItems"); // 4. Clear guest wishlist
+            localStorage.removeItem("guestWishlistItems");
           } else {
-            // No merge needed, just load DB wishlist
-            setWishlistItems(dbWishlist.data || []);
+            await fetchWishlist();
           }
         } catch (err) {
           console.error("Failed to sync wishlist", err);
-          // Don't toast here, it's annoying on login
         } finally {
           setLoading(false);
         }
       } else {
-        // --- USER IS A GUEST ---
-        // Load from localStorage
         const saved = localStorage.getItem("guestWishlistItems");
         setWishlistItems(saved ? JSON.parse(saved) : []);
+        setLoading(false);
       }
     };
 
     syncWishlist();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, fetchWishlist]);
 
   // Update localStorage saving to be GUEST-ONLY
   useEffect(() => {
-    // Only save to localStorage if user is a guest
     if (!isAuthenticated) {
       localStorage.setItem("guestWishlistItems", JSON.stringify(wishlistItems));
     }
   }, [wishlistItems, isAuthenticated]);
 
-  // Modify toggleWishlist to call API
+  // --- REFACTORED: All wishlist functions now update from server response ---
+
   const toggleWishlist = async (product) => {
     const productId = product.id || product._id;
     if (!productId) {
@@ -90,39 +95,48 @@ export const WishlistProvider = ({ children }) => {
       (item) => (item.id || item._id) === productId
     );
 
-    if (exists) {
-      // --- Remove Item ---
-      const optimisticState = wishlistItems.filter(
-        (item) => (item.id || item._id) !== productId
-      );
-      setWishlistItems(optimisticState);
-
-      if (isAuthenticated) {
-        try {
-          await api.post("/wishlist/remove", { productId });
-        } catch (err) {
-          toast.error("Failed to update wishlist");
-          // Rollback
-          setWishlistItems((prev) => [...prev, product]);
+    if (isAuthenticated) {
+      // --- LOGGED IN: Call API and refetch ---
+      const endpoint = exists ? "/wishlist/remove" : "/wishlist/add";
+      try {
+        const { data } = await api.post(endpoint, { productId });
+        setWishlistItems(data.data || []); // Set state from server response
+        if (!exists) {
+          toast.success("Added to wishlist!", { icon: "❤️" });
         }
+      } catch (err) {
+        toast.error("Failed to update wishlist");
       }
     } else {
-      // --- Add Item ---
-      const optimisticState = [...wishlistItems, product];
-      setWishlistItems(optimisticState);
+      // --- GUEST: Update local state ---
+      if (exists) {
+        setWishlistItems((prev) =>
+          prev.filter((item) => (item.id || item._id) !== productId)
+        );
+      } else {
+        setWishlistItems((prev) => [...prev, product]);
+        toast.success("Added to wishlist!", { icon: "❤️" });
+      }
+    }
+  };
 
-      // toast.success("Added to wishlist!", { icon: "❤️" }); // This was the cause of double toast
+  const removeFromWishlist = async (productId) => {
+    if (!productId) return;
 
-      if (isAuthenticated) {
-        try {
-          await api.post("/wishlist/add", { productId });
-        } catch (err) {
-          toast.error("Failed to update wishlist");
-          // Rollback
-          setWishlistItems((prev) =>
-            prev.filter((item) => (item.id || item._id) !== productId)
-          );
-        }
+    // Optimistic update for UI speed
+    const oldState = wishlistItems;
+    const product = oldState.find((p) => (p.id || p._id) === productId);
+    setWishlistItems((prev) =>
+      prev.filter((item) => (item.id || item._id) !== productId)
+    );
+
+    if (isAuthenticated) {
+      try {
+        const { data } = await api.post("/wishlist/remove", { productId });
+        setWishlistItems(data.data || []); // Re-sync with server
+      } catch (err) {
+        toast.error("Failed to update wishlist");
+        if (product) setWishlistItems(oldState); // Rollback
       }
     }
   };
@@ -133,28 +147,6 @@ export const WishlistProvider = ({ children }) => {
   const getWishlistItemsCount = () => wishlistItems.length;
   const openWishlist = () => setIsWishlistOpen(true);
   const closeWishlist = () => setIsWishlistOpen(false);
-
-  // Need to update removeFromWishlist as well
-  const removeFromWishlist = (productId) => {
-    // --- FIX: Add guard to prevent 500 error ---
-    if (!productId) {
-      console.error("Attempted to remove item with no ID");
-      return;
-    }
-    // --- END FIX ---
-
-    const product = wishlistItems.find((p) => (p.id || p._id) === productId);
-    setWishlistItems((prev) =>
-      prev.filter((item) => (item.id || item._id) !== productId)
-    );
-    if (isAuthenticated) {
-      api.post("/wishlist/remove", { productId }).catch((err) => {
-        toast.error("Failed to update wishlist");
-        // Rollback
-        if (product) setWishlistItems((prev) => [...prev, product]);
-      });
-    }
-  };
 
   return (
     <WishlistContext.Provider
@@ -168,7 +160,7 @@ export const WishlistProvider = ({ children }) => {
         setIsWishlistOpen,
         openWishlist,
         closeWishlist,
-        loading, // Expose loading state
+        loading,
       }}
     >
       {children}

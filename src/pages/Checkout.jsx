@@ -15,7 +15,6 @@ import {
 import { motion } from "framer-motion";
 import { useCart } from "../context/CartContext";
 import { LocalOffer, Cancel } from "@mui/icons-material";
-import toast from "react-hot-toast";
 
 const Checkout = () => {
   const {

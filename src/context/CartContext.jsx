@@ -1,5 +1,11 @@
 // rathod-mart/src/context/CartContext.jsx
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+} from "react";
 import { useSelector } from "react-redux";
 import api from "../data/api";
 import toast from "react-hot-toast";
@@ -13,48 +19,49 @@ export const useCart = () => {
 };
 
 export const CartProvider = ({ children }) => {
-  // 1. Get auth state
   const { isAuthenticated } = useSelector((state) => state.auth);
 
-  const [cartItems, setCartItems] = useState(() => {
-    // 2. Load from guest cart if not logged in
-    if (!isAuthenticated) {
-      const saved = localStorage.getItem("guestCartItems");
-      return saved ? JSON.parse(saved) : [];
-    }
-    return []; // Logged-in users fetch from API
-  });
-
+  const [cartItems, setCartItems] = useState([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-
-  // --- 1. ADD PROMOCODE STATE ---
   const [appliedPromo, setAppliedPromo] = useState(null);
 
-  // 3. Sync cart on login/logout
+  // --- REFACTORED: Function to fetch cart from server ---
+  const fetchCart = useCallback(async () => {
+    if (!isAuthenticated) return; // Only run if logged in
+
+    setLoading(true);
+    try {
+      const { data } = await api.get("/cart");
+      setCartItems(data.data || []);
+    } catch (err) {
+      console.error("Failed to fetch cart", err);
+      // Don't toast on silent fetch
+    } finally {
+      setLoading(false);
+    }
+  }, [isAuthenticated]);
+
+  // Sync cart on login/logout
   useEffect(() => {
     const syncCart = async () => {
       if (isAuthenticated) {
         setLoading(true);
         try {
-          // 1. Fetch user's cart from DB
-          const { data: dbCart } = await api.get("/cart");
-
-          // 2. Get guest cart from localStorage
           const guestItems = JSON.parse(
             localStorage.getItem("guestCartItems") || "[]"
           );
 
           if (guestItems.length > 0) {
-            // 3. Merge guest items with DB
+            // Merge guest cart, API returns the new synced cart
             const { data: mergedCart } = await api.post("/cart/merge", {
-              items: guestItems, // Send full cart items
+              items: guestItems,
             });
             setCartItems(mergedCart.data || []);
-            localStorage.removeItem("guestCartItems"); // 4. Clear guest cart
+            localStorage.removeItem("guestCartItems");
           } else {
-            // No merge needed, just load DB cart
-            setCartItems(dbCart.data || []);
+            // No merge, just fetch the user's cart
+            await fetchCart();
           }
         } catch (err) {
           console.error("Failed to sync cart", err);
@@ -66,138 +73,162 @@ export const CartProvider = ({ children }) => {
         // --- USER IS A GUEST ---
         const saved = localStorage.getItem("guestCartItems");
         setCartItems(saved ? JSON.parse(saved) : []);
-        setAppliedPromo(null); // Clear promo on logout
+        setAppliedPromo(null);
+        setLoading(false);
       }
     };
     syncCart();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, fetchCart]);
 
-  // 4. Save to localStorage ONLY if guest
+  // Save to localStorage ONLY if guest
   useEffect(() => {
     if (!isAuthenticated) {
       localStorage.setItem("guestCartItems", JSON.stringify(cartItems));
     }
   }, [cartItems, isAuthenticated]);
 
-  // 5. Update Cart Functions to call API
-  const addToCart = (product, variant = null) => {
+  // --- REFACTORED: All cart functions now update from server response ---
+
+  const addToCart = async (product, variant = null) => {
     const cartId = variant
       ? `${product.id || product._id}_${variant.id || variant._id}`
       : `${product.id || product._id}`;
 
-    setCartItems((prev) => {
-      const exists = prev.find((item) => item.cartId === cartId);
-      if (exists) {
-        return prev.map((item) =>
-          item.cartId === cartId
-            ? { ...item, quantity: item.quantity + 1 }
-            : item
-        );
-      }
-      // create new cart item
-      const newItem = {
-        id: product.id || product._id,
-        cartId,
-        name: product.name,
-        image: product.image,
-        price: variant ? variant.price : product.price ?? 0,
-        originalPrice: product.originalPrice ?? null,
-        discount: product.discountPercent ?? 0,
-        quantity: 1,
-        selectedVariant: variant
-          ? {
-              id: variant.id || variant._id,
-              sku: variant.sku || null,
-              color: variant.color?.name || variant.color?.value || null,
-              size: variant.size?.name || variant.size?.value || null,
-            }
-          : null,
-        productRef: product,
-      };
-      return [...prev, newItem];
-    });
-
     if (isAuthenticated) {
-      api
-        .post("/cart/add", {
+      // --- LOGGED IN: Call API first ---
+      try {
+        const { data } = await api.post("/cart/add", {
           productId: product.id || product._id,
           variantId: variant ? variant.id || variant._id : null,
           quantity: 1,
-        })
-        .catch((err) => toast.error("Failed to update cart"));
+        });
+        setCartItems(data.data || []); // Set state from server response
+      } catch (err) {
+        toast.error("Failed to add item to cart");
+      }
+    } else {
+      // --- GUEST: Update local state ---
+      setCartItems((prev) => {
+        const exists = prev.find((item) => item.cartId === cartId);
+        if (exists) {
+          return prev.map((item) =>
+            item.cartId === cartId
+              ? { ...item, quantity: item.quantity + 1 }
+              : item
+          );
+        }
+        const newItem = {
+          id: product.id || product._id,
+          cartId,
+          name: product.name,
+          image: product.image,
+          price: variant ? variant.price : product.price ?? 0,
+          originalPrice: product.originalPrice ?? null,
+          discount: product.discountPercent ?? 0,
+          quantity: 1,
+          selectedVariant: variant
+            ? {
+                id: variant.id || variant._id,
+                sku: variant.sku || null,
+                color: variant.color?.name || variant.color?.value || null,
+                size: variant.size?.name || variant.size?.value || null,
+              }
+            : null,
+          productRef: product,
+        };
+        return [...prev, newItem];
+      });
     }
   };
 
-  const removeFromCart = (cartId) => {
+  const removeFromCart = async (cartId) => {
     const itemToRemove = cartItems.find((item) => item.cartId === cartId);
+    if (!itemToRemove) return;
+
+    // Optimistic update for UI speed
     setCartItems((prev) => prev.filter((item) => item.cartId !== cartId));
 
-    if (isAuthenticated && itemToRemove) {
-      api
-        .post("/cart/remove", {
+    if (isAuthenticated) {
+      try {
+        const { data } = await api.post("/cart/remove", {
           productId: itemToRemove.id,
           variantId: itemToRemove.selectedVariant
             ? itemToRemove.selectedVariant.id
             : null,
-        })
-        .catch((err) => toast.error("Failed to update cart"));
+        });
+        setCartItems(data.data || []); // Re-sync with server
+      } catch (err) {
+        toast.error("Failed to remove item");
+        setCartItems((prev) => [...prev, itemToRemove]); // Rollback
+      }
     }
   };
 
-  const updateQuantity = (cartId, quantity) => {
+  const updateQuantity = async (cartId, quantity) => {
     if (quantity <= 0) {
       removeFromCart(cartId);
       return;
     }
 
-    let itemToUpdate = null;
+    const itemToUpdate = cartItems.find((item) => item.cartId === cartId);
+    if (!itemToUpdate) return;
+
+    // Optimistic update
+    const oldCart = cartItems;
     setCartItems((prev) =>
-      prev.map((item) => {
-        if (item.cartId === cartId) {
-          itemToUpdate = { ...item, quantity };
-          return itemToUpdate;
-        }
-        return item;
-      })
+      prev.map((item) =>
+        item.cartId === cartId ? { ...item, quantity } : item
+      )
     );
 
-    if (isAuthenticated && itemToUpdate) {
-      api
-        .post("/cart/update", {
+    if (isAuthenticated) {
+      try {
+        const { data } = await api.post("/cart/update", {
           productId: itemToUpdate.id,
           variantId: itemToUpdate.selectedVariant
             ? itemToUpdate.selectedVariant.id
             : null,
           quantity: quantity,
-        })
-        .catch((err) => toast.error("Failed to update cart"));
+        });
+        setCartItems(data.data || []); // Re-sync
+      } catch (err) {
+        toast.error("Failed to update quantity");
+        setCartItems(oldCart); // Rollback
+      }
     }
   };
 
-  const clearCart = () => {
+  const clearCart = async () => {
     setCartItems([]);
-    setAppliedPromo(null); // Clear promo
+    setAppliedPromo(null);
     if (isAuthenticated) {
-      api
-        .post("/cart/clear")
-        .catch((err) => toast.error("Failed to clear cart"));
+      try {
+        await api.post("/cart/clear");
+      } catch (err) {
+        toast.error("Failed to clear cart");
+        // No rollback needed, just refetch
+        fetchCart();
+      }
     }
   };
 
-  // --- 2. ADD PROMOCODE FUNCTIONS ---
+  // --- NEW: applyPromocode calls new backend route ---
   const applyPromocode = async (code) => {
     if (!isAuthenticated) {
       toast.error("Please login to apply promocodes");
-      return;
+      throw new Error("Not logged in");
     }
     try {
-      const res = await api.post("/cart/validate-promo", { code });
-      setAppliedPromo(res.data.data);
-      toast.success(`Promocode "${res.data.data.code}" applied!`);
+      // Call the NEW promocode validation route
+      const { data } = await api.post("/promocodes/validate", { code });
+      setAppliedPromo(data.data); // data.data contains the promo object
+      toast.success(`Promocode "${data.data.code}" applied!`);
     } catch (err) {
       setAppliedPromo(null);
-      toast.error(err.response?.data?.message || err.message || "Invalid code");
-      throw err; // Re-throw for form to handle loading state
+      const errMsg =
+        err.response?.data?.message || err.message || "Invalid code";
+      toast.error(errMsg);
+      throw new Error(errMsg); // Re-throw for form to handle loading state
     }
   };
 
@@ -206,7 +237,6 @@ export const CartProvider = ({ children }) => {
     toast.success("Promocode removed");
   };
 
-  // --- 3. MODIFY getCartTotal TO APPLY DISCOUNT ---
   const getCartSubtotal = () =>
     cartItems.reduce(
       (total, item) => total + Number(item.price || 0) * item.quantity,
@@ -219,18 +249,18 @@ export const CartProvider = ({ children }) => {
     let discountAmount = 0;
 
     if (appliedPromo) {
+      // Check min purchase again
       if (subtotal < appliedPromo.minPurchase) {
-        // Auto-remove promo if cart total falls below minimum
         removePromocode();
         toast.error(
           `Cart total is below minimum of ₹${appliedPromo.minPurchase}`
         );
-        return subtotal;
+        return { subtotal, total: subtotal, discountAmount: 0 };
       }
 
+      // Calculate discount
       if (appliedPromo.discountType === "Fixed") {
         discountAmount = appliedPromo.discountValue;
-        total = subtotal - discountAmount;
       } else if (appliedPromo.discountType === "Percentage") {
         discountAmount = subtotal * (appliedPromo.discountValue / 100);
         if (
@@ -239,17 +269,16 @@ export const CartProvider = ({ children }) => {
         ) {
           discountAmount = appliedPromo.maxDiscount;
         }
-        total = subtotal - discountAmount;
       }
+      total = subtotal - discountAmount;
     }
 
     return {
       subtotal: subtotal,
-      total: Math.max(total, 0), // Ensure total doesn't go below 0
+      total: Math.max(total, 0),
       discountAmount: discountAmount,
     };
   };
-  // --- END MODIFICATION ---
 
   const getCartItemsCount = () =>
     cartItems.reduce((total, item) => total + item.quantity, 0);
@@ -265,14 +294,13 @@ export const CartProvider = ({ children }) => {
         removeFromCart,
         updateQuantity,
         clearCart,
-        getCartSubtotal, // 4. Expose Subtotal
-        getCartTotal, // This is now an object
+        getCartSubtotal,
+        getCartTotal,
         getCartItemsCount,
         isCartOpen,
         openCart,
         closeCart,
         loading,
-        // --- 5. EXPOSE PROMO FUNCTIONS ---
         appliedPromo,
         applyPromocode,
         removePromocode,

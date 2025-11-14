@@ -46,13 +46,11 @@ import {
 } from "@mui/icons-material";
 import { motion } from "framer-motion";
 import { useParams, useNavigate } from "react-router-dom";
-// --- FIX: Removed .jsx extension from import ---
 import { useCart } from "../context/CartContext";
-// --- END FIX ---
-import { useWishlist } from "../context/WishlistContext.jsx";
+import { useWishlist } from "../context/WishlistContext";
 import toast from "react-hot-toast";
-import ProductCard from "../components/home/ProductCard.jsx";
-import api from "../data/api.js";
+import ProductCard from "../components/home/ProductCard";
+import api from "../data/api";
 import "./ProductDetail.css";
 
 /* PriceBlock unchanged */
@@ -119,9 +117,6 @@ const ProductDetail = () => {
   const containerRef = useRef(null); // wrapper of the visible image area
   const imgRef = useRef(null); // the <img> element
 
-  // normalized mouse position (0..1) relative to displayed image
-  const [mouseNorm, setMouseNorm] = useState({ x: 0.5, y: 0.5 });
-
   // lens position (pixels) so it renders exactly under cursor
   const [lensLeftPx, setLensLeftPx] = useState(0);
   const [lensTopPx, setLensTopPx] = useState(0);
@@ -154,7 +149,7 @@ const ProductDetail = () => {
         setCurrentStock(data.totalStock ?? data.stock ?? 0);
         setCurrentPrice(data.price ?? data.basePrice ?? null);
 
-        // variants
+        // variants (attempt to merge with inventory/price API)
         try {
           const invVariants = await api.fetchProductVariants(id);
           let merged = [];
@@ -170,7 +165,7 @@ const ProductDetail = () => {
               };
             });
           } else {
-            merged = invVariants.map((v) => ({
+            merged = (invVariants || []).map((v) => ({
               id: v.id,
               sku: v.sku,
               price: v.price,
@@ -192,8 +187,12 @@ const ProductDetail = () => {
         // related
         const catId = data?.category?._id || data?.category || null;
         if (catId) {
-          const rel = await api.fetchProducts({ category: catId, limit: 12 });
-          setRelated(rel.filter((p) => p.id !== data.id).slice(0, 4));
+          try {
+            const rel = await api.fetchProducts({ category: catId, limit: 12 });
+            setRelated(rel.filter((p) => p.id !== data.id).slice(0, 4));
+          } catch (err) {
+            console.warn("Related fetch failed:", err);
+          }
         }
       } catch (err) {
         setErr("Product not found");
@@ -276,61 +275,60 @@ const ProductDetail = () => {
     if (Array.isArray(variant.images) && variant.images.length > 0)
       setCurrentImages(variant.images);
     else setCurrentImages(prod?.generalImages || [prod?.image]);
+    // reset selected image index to 0 for new variant images
+    setSelectedImage(0);
   };
 
   // precise mouse handler: compute normalized coords and pixel coords for lens,
   // and compute zoom image offsets in pixels (using image natural size)
-  const handleMouseMove = useCallback(
-    (e) => {
-      const imgEl = imgRef.current;
-      const containerEl = containerRef.current;
-      if (!imgEl || !containerEl) return;
+  // NOTE: we intentionally don't keep a "mouseNorm" state — we compute and use values directly.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const handleMouseMove = useCallback((e) => {
+    const imgEl = imgRef.current;
+    const containerEl = containerRef.current;
+    if (!imgEl || !containerEl) return;
 
-      const imgRect = imgEl.getBoundingClientRect();
+    const imgRect = imgEl.getBoundingClientRect();
 
-      // normalized coords within displayed image (0..1)
-      const nx = (e.clientX - imgRect.left) / imgRect.width;
-      const ny = (e.clientY - imgRect.top) / imgRect.height;
-      const cx = Math.max(0, Math.min(1, nx));
-      const cy = Math.max(0, Math.min(1, ny));
-      setMouseNorm({ x: cx, y: cy });
+    // normalized coords within displayed image (0..1)
+    const nx = (e.clientX - imgRect.left) / imgRect.width;
+    const ny = (e.clientY - imgRect.top) / imgRect.height;
+    const cx = Math.max(0, Math.min(1, nx));
+    const cy = Math.max(0, Math.min(1, ny));
 
-      // lens pixel position relative to container
-      const containerRect = containerEl.getBoundingClientRect();
-      // compute cursor position relative to container top-left in px
-      const pxInContainerX = e.clientX - containerRect.left;
-      const pxInContainerY = e.clientY - containerRect.top;
-      setLensLeftPx(Math.round(pxInContainerX));
-      setLensTopPx(Math.round(pxInContainerY));
+    // lens pixel position relative to container
+    const containerRect = containerEl.getBoundingClientRect();
+    const pxInContainerX = e.clientX - containerRect.left;
+    const pxInContainerY = e.clientY - containerRect.top;
+    setLensLeftPx(Math.round(pxInContainerX));
+    setLensTopPx(Math.round(pxInContainerY));
 
-      // For zoom: use natural image size (not CSS-scaled size)
-      const natW = imgEl.naturalWidth || imgRect.width;
-      const natH = imgEl.naturalHeight || imgRect.height;
+    // For zoom: use natural image size (not CSS-scaled size)
+    const natW = imgEl.naturalWidth || imgRect.width;
+    const natH = imgEl.naturalHeight || imgRect.height;
 
-      const pxImage = cx * natW;
-      const pyImage = cy * natH;
+    const pxImage = cx * natW;
+    const pyImage = cy * natH;
 
-      const imgWzoom = Math.round(natW * ZOOM_SCALE);
-      const imgHzoom = Math.round(natH * ZOOM_SCALE);
+    const imgWzoom = Math.round(natW * ZOOM_SCALE);
+    const imgHzoom = Math.round(natH * ZOOM_SCALE);
 
-      const offsetX = Math.round(pxImage * ZOOM_SCALE - ZOOM_SIZE / 2);
-      const offsetY = Math.round(pyImage * ZOOM_SCALE - ZOOM_SIZE / 2);
+    const offsetX = Math.round(pxImage * ZOOM_SCALE - ZOOM_SIZE / 2);
+    const offsetY = Math.round(pyImage * ZOOM_SCALE - ZOOM_SIZE / 2);
 
-      const maxOffsetX = Math.max(0, imgWzoom - ZOOM_SIZE);
-      const maxOffsetY = Math.max(0, imgHzoom - ZOOM_SIZE);
-      const clampedX = Math.max(0, Math.min(maxOffsetX, offsetX));
-      const clampedY = Math.max(0, Math.min(maxOffsetY, offsetY));
+    const maxOffsetX = Math.max(0, imgWzoom - ZOOM_SIZE);
+    const maxOffsetY = Math.max(0, imgHzoom - ZOOM_SIZE);
+    const clampedX = Math.max(0, Math.min(maxOffsetX, offsetX));
+    const clampedY = Math.max(0, Math.min(maxOffsetY, offsetY));
 
-      // left/top for absolute-positioned zoom image (negative to shift image)
-      setZoomImgStyle({
-        width: `${imgWzoom}px`,
-        height: `${imgHzoom}px`,
-        left: `${-clampedX}px`,
-        top: `${-clampedY}px`,
-      });
-    },
-    [setMouseNorm]
-  );
+    // left/top for absolute-positioned zoom image (negative to shift image)
+    setZoomImgStyle({
+      width: `${imgWzoom}px`,
+      height: `${imgHzoom}px`,
+      left: `${-clampedX}px`,
+      top: `${-clampedY}px`,
+    });
+  }, []);
 
   const handleMouseEnter = () => setIsHovering(true);
   const handleMouseLeave = () => setIsHovering(false);
@@ -792,7 +790,6 @@ const ProductDetail = () => {
           BackdropComponent={Backdrop}
           BackdropProps={{ timeout: 400 }}
         >
-          {/* IMPORTANT: modal container background set transparent in CSS to remove the big white outer panel */}
           <Box className="zoom-modal" role="dialog" aria-modal="true">
             <IconButton className="zoom-modal-close" onClick={closeZoomModal}>
               <Close />
