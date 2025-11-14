@@ -1,5 +1,5 @@
 // src/components/cart/CartDrawer.jsx
-import React from "react";
+import React, { useState } from "react"; // 1. Import useState
 import {
   Drawer,
   Box,
@@ -10,6 +10,8 @@ import {
   Divider,
   Paper,
   Chip,
+  TextField, // 2. Import TextField
+  InputAdornment, // 2. Import Adornment
 } from "@mui/material";
 import {
   Close,
@@ -19,6 +21,8 @@ import {
   ShoppingCartOutlined,
   LocalShipping,
   ArrowForward,
+  LocalOffer, // 3. Import Icon
+  Cancel, // 3. Import Icon
 } from "@mui/icons-material";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
@@ -33,11 +37,38 @@ const CartDrawer = () => {
     updateQuantity,
     removeFromCart,
     getCartTotal,
+    getCartItemsCount, // 4. Get getCartItemsCount
+    appliedPromo, // 5. Get promo state
+    applyPromocode,
+    removePromocode,
   } = useCart();
+
+  const [promoInput, setPromoInput] = useState("");
+  const [promoLoading, setPromoLoading] = useState(false);
 
   const handleCheckout = () => {
     closeCart();
     navigate("/checkout");
+  };
+
+  // 6. FIX BUG: Use total quantity for header
+  const totalQuantity = getCartItemsCount();
+
+  // 7. Get cart totals object
+  const { subtotal, total, discountAmount } = getCartTotal();
+
+  // 8. Handle Apply Promo
+  const handleApplyPromo = async () => {
+    if (!promoInput) return;
+    setPromoLoading(true);
+    try {
+      await applyPromocode(promoInput);
+      setPromoInput("");
+    } catch (err) {
+      // Error is already toasted by context
+    } finally {
+      setPromoLoading(false);
+    }
   };
 
   return (
@@ -84,8 +115,9 @@ const CartDrawer = () => {
             >
               Shopping Cart
             </Typography>
+            {/* 9. BUG FIX: Use totalQuantity */}
             <Typography variant="caption" sx={{ opacity: 0.9 }}>
-              {cartItems.length} item{cartItems.length !== 1 ? "s" : ""}
+              {totalQuantity} item{totalQuantity !== 1 ? "s" : ""}
             </Typography>
           </Box>
         </Box>
@@ -145,16 +177,15 @@ const CartDrawer = () => {
         ) : (
           <AnimatePresence>
             {cartItems.map((item) => (
-              // --- FIX: Using item.cartId as the key ---
               <motion.div
-                key={item.cartId}
-                // --- END FIX ---
+                key={item.cartId || item.id}
                 layout
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, x: -100 }}
                 transition={{ duration: 0.3 }}
               >
+                {/* ... (item card JSX is unchanged) ... */}
                 <Paper
                   elevation={0}
                   sx={{
@@ -198,7 +229,6 @@ const CartDrawer = () => {
                         {item.name}
                       </Typography>
 
-                      {/* Variant info (color / size) */}
                       {item.selectedVariant && (
                         <Typography
                           variant="caption"
@@ -318,37 +348,82 @@ const CartDrawer = () => {
             boxShadow: "0 -8px 24px rgba(0,0,0,0.08)",
           }}
         >
-          <Box
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              gap: 1.5,
-              mb: 2,
-              p: 2,
-              bgcolor: "#E8F5E9",
-              borderRadius: 3,
-            }}
-          >
-            <LocalShipping sx={{ color: "#2E7D32", fontSize: 28 }} />
-            <Typography variant="body2" sx={{ color: "text.secondary" }}>
-              Free delivery on orders above ₹500
-            </Typography>
+          {/* 10. ADD PROMOCODE SECTION */}
+          <Box sx={{ mb: 2 }}>
+            {appliedPromo ? (
+              <Chip
+                icon={<LocalOffer />}
+                label={`Code "${appliedPromo.code}" applied!`}
+                color="success"
+                onDelete={removePromocode}
+                deleteIcon={<Cancel />}
+                sx={{ fontWeight: 600 }}
+              />
+            ) : (
+              <Box sx={{ display: "flex", gap: 1 }}>
+                <TextField
+                  label="Promocode"
+                  size="small"
+                  variant="outlined"
+                  value={promoInput}
+                  onChange={(e) => setPromoInput(e.target.value)}
+                  disabled={promoLoading}
+                  sx={{ flex: 1 }}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <LocalOffer />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+                <Button
+                  variant="contained"
+                  onClick={handleApplyPromo}
+                  disabled={promoLoading}
+                  sx={{ px: 4 }}
+                >
+                  {promoLoading ? "..." : "Apply"}
+                </Button>
+              </Box>
+            )}
           </Box>
-          <Divider sx={{ my: 2 }} />
+          {/* --- END PROMOCODE SECTION --- */}
+
           <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
             <Typography variant="body1" color="text.secondary">
               Subtotal
             </Typography>
             <Typography variant="body1" sx={{ fontWeight: 600 }}>
-              ₹{getCartTotal().toFixed(2)}
+              ₹{subtotal.toFixed(2)}
             </Typography>
           </Box>
+
+          {/* 11. SHOW DISCOUNT IF APPLIED */}
+          {discountAmount > 0 && (
+            <Box
+              sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}
+            >
+              <Typography variant="body1" color="success.main">
+                Discount
+              </Typography>
+              <Typography
+                variant="body1"
+                sx={{ fontWeight: 600, color: "success.main" }}
+              >
+                - ₹{discountAmount.toFixed(2)}
+              </Typography>
+            </Box>
+          )}
+
+          <Divider sx={{ my: 1.5 }} />
+
           <Box sx={{ display: "flex", justifyContent: "space-between", mb: 3 }}>
             <Typography variant="h6" sx={{ fontWeight: 800 }}>
               Total
             </Typography>
             <Typography variant="h6" sx={{ fontWeight: 800, color: "#2E7D32" }}>
-              ₹{getCartTotal().toFixed(2)}
+              ₹{total.toFixed(2)}
             </Typography>
           </Box>
           <Button

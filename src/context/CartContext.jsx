@@ -26,7 +26,10 @@ export const CartProvider = ({ children }) => {
   });
 
   const [isCartOpen, setIsCartOpen] = useState(false);
-  const [loading, setLoading] = useState(false); // Add loading state
+  const [loading, setLoading] = useState(false);
+
+  // --- 1. ADD PROMOCODE STATE ---
+  const [appliedPromo, setAppliedPromo] = useState(null);
 
   // 3. Sync cart on login/logout
   useEffect(() => {
@@ -63,6 +66,7 @@ export const CartProvider = ({ children }) => {
         // --- USER IS A GUEST ---
         const saved = localStorage.getItem("guestCartItems");
         setCartItems(saved ? JSON.parse(saved) : []);
+        setAppliedPromo(null); // Clear promo on logout
       }
     };
     syncCart();
@@ -76,8 +80,6 @@ export const CartProvider = ({ children }) => {
   }, [cartItems, isAuthenticated]);
 
   // 5. Update Cart Functions to call API
-
-  // Add to cart
   const addToCart = (product, variant = null) => {
     const cartId = variant
       ? `${product.id || product._id}_${variant.id || variant._id}`
@@ -98,7 +100,7 @@ export const CartProvider = ({ children }) => {
         cartId,
         name: product.name,
         image: product.image,
-        price: variant ? variant.price : product.price ?? 0, // Use variant price if available
+        price: variant ? variant.price : product.price ?? 0,
         originalPrice: product.originalPrice ?? null,
         discount: product.discountPercent ?? 0,
         quantity: 1,
@@ -126,7 +128,6 @@ export const CartProvider = ({ children }) => {
     }
   };
 
-  // Remove from cart
   const removeFromCart = (cartId) => {
     const itemToRemove = cartItems.find((item) => item.cartId === cartId);
     setCartItems((prev) => prev.filter((item) => item.cartId !== cartId));
@@ -143,7 +144,6 @@ export const CartProvider = ({ children }) => {
     }
   };
 
-  // Update quantity
   const updateQuantity = (cartId, quantity) => {
     if (quantity <= 0) {
       removeFromCart(cartId);
@@ -176,6 +176,7 @@ export const CartProvider = ({ children }) => {
 
   const clearCart = () => {
     setCartItems([]);
+    setAppliedPromo(null); // Clear promo
     if (isAuthenticated) {
       api
         .post("/cart/clear")
@@ -183,11 +184,72 @@ export const CartProvider = ({ children }) => {
     }
   };
 
-  const getCartTotal = () =>
+  // --- 2. ADD PROMOCODE FUNCTIONS ---
+  const applyPromocode = async (code) => {
+    if (!isAuthenticated) {
+      toast.error("Please login to apply promocodes");
+      return;
+    }
+    try {
+      const res = await api.post("/cart/validate-promo", { code });
+      setAppliedPromo(res.data.data);
+      toast.success(`Promocode "${res.data.data.code}" applied!`);
+    } catch (err) {
+      setAppliedPromo(null);
+      toast.error(err.response?.data?.message || err.message || "Invalid code");
+      throw err; // Re-throw for form to handle loading state
+    }
+  };
+
+  const removePromocode = () => {
+    setAppliedPromo(null);
+    toast.success("Promocode removed");
+  };
+
+  // --- 3. MODIFY getCartTotal TO APPLY DISCOUNT ---
+  const getCartSubtotal = () =>
     cartItems.reduce(
       (total, item) => total + Number(item.price || 0) * item.quantity,
       0
     );
+
+  const getCartTotal = () => {
+    const subtotal = getCartSubtotal();
+    let total = subtotal;
+    let discountAmount = 0;
+
+    if (appliedPromo) {
+      if (subtotal < appliedPromo.minPurchase) {
+        // Auto-remove promo if cart total falls below minimum
+        removePromocode();
+        toast.error(
+          `Cart total is below minimum of ₹${appliedPromo.minPurchase}`
+        );
+        return subtotal;
+      }
+
+      if (appliedPromo.discountType === "Fixed") {
+        discountAmount = appliedPromo.discountValue;
+        total = subtotal - discountAmount;
+      } else if (appliedPromo.discountType === "Percentage") {
+        discountAmount = subtotal * (appliedPromo.discountValue / 100);
+        if (
+          appliedPromo.maxDiscount &&
+          discountAmount > appliedPromo.maxDiscount
+        ) {
+          discountAmount = appliedPromo.maxDiscount;
+        }
+        total = subtotal - discountAmount;
+      }
+    }
+
+    return {
+      subtotal: subtotal,
+      total: Math.max(total, 0), // Ensure total doesn't go below 0
+      discountAmount: discountAmount,
+    };
+  };
+  // --- END MODIFICATION ---
 
   const getCartItemsCount = () =>
     cartItems.reduce((total, item) => total + item.quantity, 0);
@@ -203,12 +265,17 @@ export const CartProvider = ({ children }) => {
         removeFromCart,
         updateQuantity,
         clearCart,
-        getCartTotal,
+        getCartSubtotal, // 4. Expose Subtotal
+        getCartTotal, // This is now an object
         getCartItemsCount,
         isCartOpen,
         openCart,
         closeCart,
         loading,
+        // --- 5. EXPOSE PROMO FUNCTIONS ---
+        appliedPromo,
+        applyPromocode,
+        removePromocode,
       }}
     >
       {children}
