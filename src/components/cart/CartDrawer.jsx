@@ -145,8 +145,10 @@ const CartDrawer = () => {
         ) : (
           <AnimatePresence>
             {cartItems.map((item) => (
+              // --- FIX: Using item.cartId as the key ---
               <motion.div
-                key={item.cartId || item.id}
+                key={item.cartId}
+                // --- END FIX ---
                 layout
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}

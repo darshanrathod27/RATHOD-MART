@@ -208,7 +208,7 @@ export const CartProvider = ({ children }) => {
         isCartOpen,
         openCart,
         closeCart,
-        loading, // Expose loading state
+        loading,
       }}
     >
       {children}

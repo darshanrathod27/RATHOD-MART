@@ -46,7 +46,9 @@ import {
 } from "@mui/icons-material";
 import { motion } from "framer-motion";
 import { useParams, useNavigate } from "react-router-dom";
-import { useCart } from "../context/CartContext.jsx";
+// --- FIX: Removed .jsx extension from import ---
+import { useCart } from "../context/CartContext";
+// --- END FIX ---
 import { useWishlist } from "../context/WishlistContext.jsx";
 import toast from "react-hot-toast";
 import ProductCard from "../components/home/ProductCard.jsx";

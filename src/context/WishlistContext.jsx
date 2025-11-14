@@ -110,7 +110,8 @@ export const WishlistProvider = ({ children }) => {
       // --- Add Item ---
       const optimisticState = [...wishlistItems, product];
       setWishlistItems(optimisticState);
-      toast.success("Added to wishlist!", { icon: "❤️" });
+
+      // toast.success("Added to wishlist!", { icon: "❤️" }); // This was the cause of double toast
 
       if (isAuthenticated) {
         try {
@@ -135,6 +136,13 @@ export const WishlistProvider = ({ children }) => {
 
   // Need to update removeFromWishlist as well
   const removeFromWishlist = (productId) => {
+    // --- FIX: Add guard to prevent 500 error ---
+    if (!productId) {
+      console.error("Attempted to remove item with no ID");
+      return;
+    }
+    // --- END FIX ---
+
     const product = wishlistItems.find((p) => (p.id || p._id) === productId);
     setWishlistItems((prev) =>
       prev.filter((item) => (item.id || item._id) !== productId)

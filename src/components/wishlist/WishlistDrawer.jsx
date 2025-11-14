@@ -132,8 +132,10 @@ const WishlistDrawer = () => {
         ) : (
           <AnimatePresence>
             {wishlistItems.map((item) => (
+              // --- FIX: Using item.id || item._id as the key ---
               <motion.div
-                key={item.id}
+                key={item.id || item._id}
+                // --- END FIX ---
                 layout
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -261,7 +263,11 @@ const WishlistDrawer = () => {
                         </Button>
                         <IconButton
                           size="small"
-                          onClick={() => removeFromWishlist(item.id)}
+                          // --- FIX: Passing item.id || item._id ---
+                          onClick={() =>
+                            removeFromWishlist(item.id || item._id)
+                          }
+                          // --- END FIX ---
                           sx={{
                             color: "error.main",
                             border: "2px solid",

@@ -7,13 +7,15 @@ const Checkout = () => {
   const { cartItems, getCartTotal } = useCart();
 
   return (
-    <Container maxWidth="md" sx={{ py: 4 }}>
+    // --- FIX: Changed sx prop to add correct top padding ---
+    <Container maxWidth="md" sx={{ pt: 12, pb: 6 }}>
+      {/* --- END FIX --- */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
       >
-        <Paper sx={{ p: 4 }}>
+        <Paper sx={{ p: 4, borderRadius: 4 }}>
           <Typography variant="h4" sx={{ fontWeight: 700, mb: 4 }}>
             Checkout
           </Typography>
@@ -23,13 +25,15 @@ const Checkout = () => {
             </Typography>
             {cartItems.map((item) => (
               <Box
-                key={item.id}
+                key={item.cartId || item.id} // Use cartId
                 sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}
               >
                 <Typography>
                   {item.name} × {item.quantity}
                 </Typography>
-                <Typography>₹{item.price * item.quantity}</Typography>
+                <Typography>
+                  ₹{(item.price * item.quantity).toFixed(2)}
+                </Typography>
               </Box>
             ))}
           </Box>
@@ -39,7 +43,7 @@ const Checkout = () => {
               variant="h6"
               sx={{ fontWeight: 700, color: "primary.main" }}
             >
-              ₹{getCartTotal()}
+              ₹{getCartTotal().toFixed(2)}
             </Typography>
           </Box>
           <Button
