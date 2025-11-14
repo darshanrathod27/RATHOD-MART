@@ -16,6 +16,7 @@ const CategoryProducts = lazy(() => import("./pages/CategoryProducts"));
 const SearchPage = lazy(() => import("./pages/SearchPage"));
 const Login = lazy(() => import("./pages/Login"));
 const Register = lazy(() => import("./pages/Register"));
+const Profile = lazy(() => import("./pages/Profile")); // 1. Import new Profile page
 
 function App() {
   return (
@@ -40,7 +41,7 @@ function App() {
           {/* These routes require the user to be logged in */}
           <Route element={<ProtectedRoute />}>
             <Route path="/checkout" element={<Checkout />} />
-            {/* You can add more protected routes here, like /profile */}
+            <Route path="/profile" element={<Profile />} /> {/* 2. Add route */}
           </Route>
 
           {/* Fallback route */}

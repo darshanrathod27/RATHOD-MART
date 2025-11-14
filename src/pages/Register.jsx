@@ -25,9 +25,6 @@ const Register = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
-  // The useEffect that checked for isAuthenticated is REMOVED
-  // GuestRoute.jsx now handles this.
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (password.length < 6) {
@@ -36,6 +33,7 @@ const Register = () => {
     }
     setLoading(true);
     try {
+      // Only send name, email, and password
       const res = await api.post("/users/register", { name, email, password });
 
       dispatch(setCredentials(res.data));
@@ -99,8 +97,7 @@ const Register = () => {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
-          />{" "}
-          {/* <-- This was the line with the error. Fixed! */}
+          />
         </div>
         <div className="inputBox">
           <input

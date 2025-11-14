@@ -22,6 +22,7 @@ import {
   List,
   ListItem,
   Container,
+  Avatar, // Import Avatar
 } from "@mui/material";
 import {
   Search,
@@ -36,6 +37,7 @@ import {
   Close,
   Home as HomeIcon,
   Logout as LogoutIcon,
+  Settings, // Import Settings
 } from "@mui/icons-material";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -48,6 +50,10 @@ import { useSelector, useDispatch } from "react-redux";
 import { logout as logoutAction } from "../../store/authSlice";
 import api from "../../data/api";
 import toast from "react-hot-toast";
+
+const API_BASE =
+  (process.env.REACT_APP_API_URL && String(process.env.REACT_APP_API_URL)) ||
+  "http://localhost:5000";
 
 const Navbar = () => {
   const theme = useTheme();
@@ -90,8 +96,13 @@ const Navbar = () => {
 
   const debouncedSearch = useDebounce(searchValue, 300);
 
+  // Helper to get full image URL
+  const getAvatarUrl = (relative) => {
+    if (!relative) return null;
+    return relative.startsWith("http") ? relative : `${API_BASE}${relative}`;
+  };
+
   useEffect(() => {
-    // --- CHANGE: Make 'Trending' active if on that route ---
     if (
       location.pathname === "/category" &&
       location.search.includes("trending=true")
@@ -101,7 +112,6 @@ const Navbar = () => {
       setActiveLink(location.pathname);
     }
   }, [location.pathname, location.search]);
-  // --- END CHANGE ---
 
   const headerVariants = {
     scrolled: {
@@ -135,7 +145,6 @@ const Navbar = () => {
 
   useEffect(() => {
     if (debouncedSearch && debouncedSearch.length > 1) {
-      // This is still mock, replace with API call when ready
       api
         .fetchProducts({ search: debouncedSearch, limit: 5 })
         .then((products) => {
@@ -165,24 +174,10 @@ const Navbar = () => {
     if (item.action) {
       item.action(e);
     }
-    // --- CHANGE: Special handling for 'Trending' ---
     if (item.name === "Trending") {
       setActiveLink("Trending");
     } else if (item.name !== "Categories") {
       setActiveLink(item.name);
-    }
-    // --- END CHANGE ---
-  };
-
-  // This function is no longer used for "Trending", but kept for "Categories"
-  const handleScrollToSection = (sectionId) => {
-    if (location.pathname !== "/") {
-      navigate("/", { state: { scrollTo: sectionId } });
-    } else {
-      const el = document.getElementById(sectionId);
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth" });
-      }
     }
   };
 
@@ -198,13 +193,11 @@ const Navbar = () => {
       icon: <Category />,
       action: (e) => setCategoryMenuAnchor(e.currentTarget),
     },
-    // --- CHANGE: "Trending" button now navigates to a special page ---
     {
       name: "Trending",
       icon: <TrendingUp />,
-      action: () => navigate("/category?trending=true"), // Changed from handleScrollToSection
+      action: () => navigate("/category?trending=true"),
     },
-    // --- END CHANGE ---
   ];
 
   const handleApplyFilters = (newFilters) => {
@@ -259,7 +252,7 @@ const Navbar = () => {
             key={item.name}
             onClick={() => {
               if (item.name === "Categories") {
-                navigate("/category"); // Mobile par category page par jao
+                navigate("/category");
               } else {
                 item.action();
               }
@@ -319,12 +312,10 @@ const Navbar = () => {
             {!isMobile && (
               <Box sx={{ display: "flex", gap: 0.5 }}>
                 {navigationItems.map((item) => {
-                  // --- CHANGE: Updated isActive logic ---
                   const isActive =
                     item.name === "Trending"
                       ? activeLink === "Trending"
                       : activeLink === item.name || activeLink === item.path;
-                  // --- END CHANGE ---
 
                   return (
                     <Button
@@ -565,7 +556,15 @@ const Navbar = () => {
                       },
                     }}
                   >
-                    <AccountCircle />
+                    {/* Show Avatar if logged in and has image */}
+                    {isAuthenticated && userInfo?.profileImage ? (
+                      <Avatar
+                        src={getAvatarUrl(userInfo.profileImage)}
+                        sx={{ width: 28, height: 28 }}
+                      />
+                    ) : (
+                      <AccountCircle />
+                    )}
                   </IconButton>
                 </motion.div>
               </Tooltip>
@@ -608,7 +607,7 @@ const Navbar = () => {
           <>
             <MenuItem
               onClick={() => {
-                navigate("/profile");
+                navigate("/profile"); // Navigate to new profile page
                 setUserMenuAnchor(null);
               }}
             >
@@ -618,6 +617,17 @@ const Navbar = () => {
               <ListItemText>
                 Profile{userInfo?.name ? ` (${userInfo.name})` : ""}
               </ListItemText>
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                navigate("/profile"); // You can make this go to /profile#settings
+                setUserMenuAnchor(null);
+              }}
+            >
+              <ListItemIcon>
+                <Settings fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>Settings</ListItemText>
             </MenuItem>
             <Divider />
             <MenuItem onClick={handleLogout}>
