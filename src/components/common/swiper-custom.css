@@ -1,0 +1,82 @@
+/* src/components/common/swiper-custom.css */
+.swiper-button-prev-custom,
+.swiper-button-next-custom {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 60px;
+  height: 60px;
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.9),
+    rgba(255, 255, 255, 0.7)
+  );
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 600;
+  color: #2e7d32;
+  cursor: pointer;
+  z-index: 10;
+  border: 2px solid rgba(46, 125, 50, 0.2);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.swiper-button-prev-custom {
+  left: -30px;
+}
+
+.swiper-button-next-custom {
+  right: -30px;
+}
+
+.swiper-button-prev-custom:hover,
+.swiper-button-next-custom:hover {
+  background: linear-gradient(
+    145deg,
+    rgba(46, 125, 50, 0.1),
+    rgba(0, 191, 165, 0.05)
+  );
+  transform: translateY(-50%) scale(1.05);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  border-color: rgba(46, 125, 50, 0.3);
+}
+
+/* Responsive Design */
+@media (max-width: 1280px) {
+  .swiper-button-prev-custom {
+    left: -20px;
+  }
+  .swiper-button-next-custom {
+    right: -20px;
+  }
+}
+
+@media (max-width: 768px) {
+  .swiper-button-prev-custom,
+  .swiper-button-next-custom {
+    width: 50px;
+    height: 50px;
+    font-size: 20px;
+  }
+  .swiper-button-prev-custom {
+    left: -10px;
+  }
+  .swiper-button-next-custom {
+    right: -10px;
+  }
+}
+
+@media (max-width: 640px) {
+  .swiper-button-prev-custom,
+  .swiper-button-next-custom {
+    display: none;
+  }
+}

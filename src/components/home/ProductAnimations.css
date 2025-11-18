@@ -1,0 +1,430 @@
+/* Premium Product Animations */
+
+/* Floating background elements */
+@keyframes floatUp {
+  0% {
+    transform: translateY(100vh) rotate(0deg);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.1;
+  }
+  90% {
+    opacity: 0.1;
+  }
+  100% {
+    transform: translateY(-100vh) rotate(360deg);
+    opacity: 0;
+  }
+}
+
+@keyframes floatSide {
+  0% {
+    transform: translateX(-100vw) translateY(20px) rotate(0deg);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.05;
+  }
+  90% {
+    opacity: 0.05;
+  }
+  100% {
+    transform: translateX(100vw) translateY(-20px) rotate(180deg);
+    opacity: 0;
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.1;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 0.15;
+  }
+}
+
+/* Background floating elements */
+.featured-products-container {
+  position: relative;
+  overflow: hidden;
+}
+
+.featured-products-container::before,
+.featured-products-container::after {
+  content: "";
+  position: absolute;
+  width: 100px;
+  height: 100px;
+  background: rgba(46, 125, 50, 0.03);
+  border-radius: 50%;
+  backdrop-filter: blur(20px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.featured-products-container::before {
+  top: 10%;
+  right: 10%;
+  animation: pulse 4s ease-in-out infinite;
+}
+
+.featured-products-container::after {
+  bottom: 20%;
+  left: 15%;
+  width: 150px;
+  height: 150px;
+  background: rgba(0, 191, 165, 0.02);
+  animation: pulse 6s ease-in-out infinite reverse;
+}
+
+/* Floating particles */
+.floating-particle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: rgba(46, 125, 50, 0.1);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.floating-particle:nth-child(1) {
+  animation: floatUp 15s linear infinite;
+  animation-delay: 0s;
+  left: 10%;
+}
+
+.floating-particle:nth-child(2) {
+  animation: floatUp 12s linear infinite;
+  animation-delay: 2s;
+  left: 20%;
+}
+
+.floating-particle:nth-child(3) {
+  animation: floatUp 18s linear infinite;
+  animation-delay: 4s;
+  left: 80%;
+}
+
+.floating-particle:nth-child(4) {
+  animation: floatSide 20s linear infinite;
+  animation-delay: 1s;
+  top: 30%;
+}
+
+.floating-particle:nth-child(5) {
+  animation: floatSide 16s linear infinite;
+  animation-delay: 3s;
+  top: 70%;
+}
+
+/* Enhanced card hover animations */
+.MuiCard-root {
+  transition: all 0.6s cubic-bezier(0.23, 1, 0.32, 1) !important;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+}
+
+.MuiCard-root:hover {
+  transform: translateY(-12px) rotateX(2deg) rotateY(1deg) !important;
+  box-shadow: 0 25px 80px rgba(46, 125, 50, 0.15),
+    0 10px 40px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Premium card image hover effect */
+.MuiCardMedia-root {
+  transition: all 0.8s cubic-bezier(0.23, 1, 0.32, 1) !important;
+  position: relative;
+  overflow: hidden;
+}
+
+.MuiCardMedia-root::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    45deg,
+    rgba(46, 125, 50, 0) 0%,
+    rgba(46, 125, 50, 0.05) 50%,
+    rgba(46, 125, 50, 0) 100%
+  );
+  opacity: 0;
+  transition: opacity 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.MuiCard-root:hover .MuiCardMedia-root::after {
+  opacity: 1;
+}
+
+.MuiCard-root:hover .MuiCardMedia-root {
+  transform: scale(1.08) rotate(0.5deg) !important;
+}
+
+/* Smooth badge animations */
+.MuiChip-root {
+  transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1) !important;
+  transform-origin: center;
+}
+
+.MuiCard-root:hover .MuiChip-root {
+  transform: scale(1.05) translateY(-1px);
+  box-shadow: 0 6px 20px rgba(46, 125, 50, 0.4) !important;
+}
+
+/* Enhanced rating animation */
+.MuiRating-root {
+  transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1) !important;
+}
+
+.MuiCard-root:hover .MuiRating-root {
+  transform: scale(1.05);
+}
+
+.MuiRating-iconFilled {
+  transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1) !important;
+}
+
+.MuiCard-root:hover .MuiRating-iconFilled {
+  filter: drop-shadow(0 0 4px rgba(255, 215, 0, 0.6)) !important;
+}
+
+/* Premium price animation */
+.MuiCardContent-root .MuiTypography-h5 {
+  transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1) !important;
+  position: relative;
+}
+
+.MuiCard-root:hover .MuiCardContent-root .MuiTypography-h5 {
+  transform: scale(1.05) translateX(2px);
+  text-shadow: 0 2px 8px rgba(46, 125, 50, 0.2);
+}
+
+/* Enhanced favorite button animation */
+.MuiIconButton-root:first-of-type {
+  transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1) !important;
+  position: relative;
+}
+
+.MuiIconButton-root:first-of-type:hover {
+  transform: scale(1.2) rotate(-5deg) !important;
+}
+
+.MuiIconButton-root:first-of-type::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  background: radial-gradient(
+    circle,
+    rgba(244, 67, 54, 0.2) 0%,
+    transparent 70%
+  );
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+  z-index: -1;
+}
+
+.MuiIconButton-root:first-of-type:hover::before {
+  width: 40px;
+  height: 40px;
+}
+
+/* Enhanced cart button with green theme */
+.MuiIconButton-root:last-of-type {
+  transition: all 0.5s cubic-bezier(0.23, 1, 0.32, 1) !important;
+  position: relative;
+  overflow: hidden;
+}
+
+.MuiIconButton-root:last-of-type::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  background: radial-gradient(
+    circle,
+    rgba(255, 255, 255, 0.2) 0%,
+    transparent 70%
+  );
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.MuiIconButton-root:last-of-type:hover::before {
+  width: 60px;
+  height: 60px;
+}
+
+.MuiIconButton-root:last-of-type:hover {
+  transform: scale(1.1) translateY(-3px) rotate(3deg) !important;
+  box-shadow: 0 12px 30px rgba(46, 125, 50, 0.4), 0 6px 15px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* Ripple effect on card click */
+.MuiCard-root {
+  position: relative;
+  overflow: hidden;
+}
+
+.MuiCard-root::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    135deg,
+    rgba(46, 125, 50, 0) 0%,
+    rgba(46, 125, 50, 0.02) 50%,
+    rgba(0, 191, 165, 0.02) 100%
+  );
+  opacity: 0;
+  transition: opacity 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.MuiCard-root:hover::before {
+  opacity: 1;
+}
+
+/* Staggered animation for grid items */
+.MuiGrid-item:nth-child(1) .MuiCard-root {
+  animation-delay: 0.1s;
+}
+
+.MuiGrid-item:nth-child(2) .MuiCard-root {
+  animation-delay: 0.2s;
+}
+
+.MuiGrid-item:nth-child(3) .MuiCard-root {
+  animation-delay: 0.3s;
+}
+
+.MuiGrid-item:nth-child(4) .MuiCard-root {
+  animation-delay: 0.4s;
+}
+
+.MuiGrid-item:nth-child(5) .MuiCard-root {
+  animation-delay: 0.5s;
+}
+
+.MuiGrid-item:nth-child(6) .MuiCard-root {
+  animation-delay: 0.6s;
+}
+
+.MuiGrid-item:nth-child(7) .MuiCard-root {
+  animation-delay: 0.7s;
+}
+
+.MuiGrid-item:nth-child(8) .MuiCard-root {
+  animation-delay: 0.8s;
+}
+
+/* Smooth title animation */
+.featured-products-title {
+  position: relative;
+  overflow: hidden;
+}
+
+.featured-products-title::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 0;
+  height: 3px;
+  background: linear-gradient(135deg, #2e7d32 0%, #00bfa5 100%);
+  transform: translateX(-50%);
+  transition: width 0.8s cubic-bezier(0.23, 1, 0.32, 1);
+  border-radius: 2px;
+}
+
+.featured-products-title:hover::after {
+  width: 100px;
+}
+
+/* Enhanced container background */
+.featured-products-bg {
+  position: relative;
+  background: linear-gradient(135deg, #f1f8e9 0%, #e8f5e8 100%);
+  overflow: hidden;
+}
+
+.featured-products-bg::before {
+  content: "";
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: repeating-conic-gradient(
+    from 0deg at 50% 50%,
+    rgba(46, 125, 50, 0.01) 0deg,
+    rgba(46, 125, 50, 0.02) 45deg,
+    rgba(0, 191, 165, 0.01) 90deg,
+    rgba(0, 191, 165, 0.02) 135deg,
+    rgba(46, 125, 50, 0.01) 180deg
+  );
+  animation: rotate 60s linear infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Mobile responsive animations */
+@media (max-width: 768px) {
+  .MuiCard-root:hover {
+    transform: translateY(-8px) !important;
+  }
+
+  .floating-particle {
+    display: none;
+  }
+
+  .featured-products-container::before,
+  .featured-products-container::after {
+    display: none;
+  }
+}
+
+/* Performance optimization */
+.MuiCard-root,
+.MuiCardMedia-root,
+.MuiIconButton-root,
+.MuiChip-root {
+  will-change: transform;
+}
+
+/* Reduce motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
