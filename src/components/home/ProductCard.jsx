@@ -1,3 +1,4 @@
+// src/components/home/ProductCard.jsx
 import React from "react";
 import {
   Card,
@@ -14,7 +15,6 @@ import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { useCart } from "../../context/CartContext";
 import { useWishlist } from "../../context/WishlistContext";
-import toast from "react-hot-toast";
 import "./BestOffers.css";
 
 const ProductCard = ({
@@ -26,10 +26,13 @@ const ProductCard = ({
   const navigate = useNavigate();
   const { addToCart } = useCart();
   const { toggleWishlist, isItemInWishlist } = useWishlist();
-  const isFavorite = isItemInWishlist(product.id || product._id);
+
+  const pid = product?.id || product?._id;
+
+  // derive favorite status on each render (keeps UI accurate after context updates)
+  const isFavorite = isItemInWishlist(pid);
 
   const handleCardClick = () => {
-    const pid = product.id || product._id; // ✅ handles both id & _id
     if (pid) {
       navigate(`/product/${pid}`);
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -38,25 +41,14 @@ const ProductCard = ({
 
   const handleAddToCart = (e) => {
     e.stopPropagation();
-    addToCart(product); // ✅ same signature your context expects
-    toast.success(`'${product.name}' added to cart!`, {
-      duration: 2000,
-      style: {
-        background: "#4caf50",
-        color: "#fff",
-      },
-    });
+    addToCart(product);
+    // toast moved to CartContext — removed from here
   };
 
   const handleFavoriteToggle = (e) => {
     e.stopPropagation();
     toggleWishlist(product);
-    if (!isFavorite) {
-      toast.success("Added to wishlist!", {
-        duration: 1500,
-        icon: "❤️",
-      });
-    }
+    // toast moved to WishlistContext — removed from here
   };
 
   return (
@@ -80,7 +72,7 @@ const ProductCard = ({
         }}
       >
         {/* Badge */}
-        {product.badge && !hideDiscountChip && !isCompact && (
+        {product?.badge && !hideDiscountChip && !isCompact && (
           <Chip
             label={product.badge}
             size="small"
@@ -98,8 +90,8 @@ const ProductCard = ({
         <Box className="product-image-container">
           <CardMedia
             component="img"
-            image={product.image}
-            alt={product.name}
+            image={product?.image}
+            alt={product?.name}
             className="product-image"
             sx={{
               width: "100%",
@@ -111,14 +103,14 @@ const ProductCard = ({
 
         {/* Product Content */}
         <CardContent className="product-content">
-          <Typography variant="body1" className="product-name">
-            {product.name}
+          <Typography variant="body1" className="product-name" noWrap>
+            {product?.name}
           </Typography>
 
           {/* Rating */}
           <Box className="product-rating-box">
             <Rating
-              value={product.rating || 0}
+              value={product?.rating || 0}
               precision={0.5}
               size="small"
               readOnly
@@ -131,16 +123,16 @@ const ProductCard = ({
               }}
             />
             <Typography variant="caption" className="product-reviews">
-              ({product.reviews || 0})
+              ({product?.reviews ?? 0})
             </Typography>
           </Box>
 
           {/* Price */}
           <Box className="product-price-box">
             <Typography variant="h6" className="product-price">
-              ₹{product.price}
+              ₹{product?.price}
             </Typography>
-            {product.originalPrice && (
+            {product?.originalPrice && (
               <Typography variant="body2" className="product-original-price">
                 ₹{product.originalPrice}
               </Typography>

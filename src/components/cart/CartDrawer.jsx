@@ -1,5 +1,4 @@
-// src/components/cart/CartDrawer.jsx
-import React, { useState } from "react"; // 1. Import useState
+import React, { useState, useEffect } from "react";
 import {
   Drawer,
   Box,
@@ -7,11 +6,10 @@ import {
   IconButton,
   Button,
   Avatar,
-  Divider,
   Paper,
   Chip,
-  TextField, // 2. Import TextField
-  InputAdornment, // 2. Import Adornment
+  TextField,
+  Divider,
 } from "@mui/material";
 import {
   Close,
@@ -20,12 +18,12 @@ import {
   Delete,
   ShoppingCartOutlined,
   ArrowForward,
-  LocalOffer, // 3. Import Icon
-  Cancel, // 3. Import Icon
+  LocalOffer,
 } from "@mui/icons-material";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { useCart } from "../../context/CartContext";
+import api from "../../data/api"; // <--- FIXED IMPORT PATH (was ../../utils/api)
 
 const CartDrawer = () => {
   const navigate = useNavigate();
@@ -36,39 +34,48 @@ const CartDrawer = () => {
     updateQuantity,
     removeFromCart,
     getCartTotal,
-    getCartItemsCount, // 4. Get getCartItemsCount
-    appliedPromo, // 5. Get promo state
+    getCartItemsCount,
+    appliedPromo,
     applyPromocode,
     removePromocode,
   } = useCart();
 
   const [promoInput, setPromoInput] = useState("");
   const [promoLoading, setPromoLoading] = useState(false);
+  const [coupons, setCoupons] = useState([]); // For recommendations
+
+  // Fetch available coupons when drawer opens
+  useEffect(() => {
+    if (isCartOpen) {
+      api
+        .fetchAvailableCoupons()
+        .then((data) => setCoupons(data))
+        .catch(() => setCoupons([]));
+    }
+  }, [isCartOpen]);
 
   const handleCheckout = () => {
     closeCart();
     navigate("/checkout");
   };
 
-  // 6. FIX BUG: Use total quantity for header
-  const totalQuantity = getCartItemsCount();
+  const handleApplyPromo = async (codeToApply) => {
+    const code = codeToApply || promoInput;
+    if (!code) return;
 
-  // 7. Get cart totals object
-  const { subtotal, total, discountAmount } = getCartTotal();
-
-  // 8. Handle Apply Promo
-  const handleApplyPromo = async () => {
-    if (!promoInput) return;
     setPromoLoading(true);
     try {
-      await applyPromocode(promoInput);
+      await applyPromocode(code);
       setPromoInput("");
     } catch (err) {
-      // Error is already toasted by context
+      // Handled in context
     } finally {
       setPromoLoading(false);
     }
   };
+
+  const { subtotal, total, discountAmount } = getCartTotal();
+  const totalCount = getCartItemsCount();
 
   return (
     <Drawer
@@ -76,19 +83,11 @@ const CartDrawer = () => {
       open={isCartOpen}
       onClose={closeCart}
       PaperProps={{
-        component: motion.div,
-        initial: { x: 500 },
-        animate: { x: 0 },
-        exit: { x: 500 },
-        transition: { type: "spring", damping: 25, stiffness: 200 },
         sx: {
           width: { xs: "100%", sm: 440 },
           maxWidth: 500,
           borderTopLeftRadius: 32,
           borderBottomLeftRadius: 32,
-          background:
-            "linear-gradient(165deg, #e8f5e9 0%, #f1f8e9 50%, #e8f5e9 100%)",
-          boxShadow: "0 -20px 60px rgba(46, 125, 50, 0.25)",
         },
       }}
     >
@@ -100,24 +99,17 @@ const CartDrawer = () => {
           color: "#fff",
           p: 3,
           display: "flex",
-          alignItems: "center",
           justifyContent: "space-between",
-          boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
+          alignItems: "center",
         }}
       >
         <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-          <ShoppingCartOutlined sx={{ fontSize: 28 }} />
+          <ShoppingCartOutlined />
           <Box>
-            <Typography
-              variant="h6"
-              sx={{ fontWeight: 800, letterSpacing: 0.5 }}
-            >
+            <Typography variant="h6" fontWeight="800">
               Shopping Cart
             </Typography>
-            {/* 9. BUG FIX: Use totalQuantity */}
-            <Typography variant="caption" sx={{ opacity: 0.9 }}>
-              {totalQuantity} item{totalQuantity !== 1 ? "s" : ""}
-            </Typography>
+            <Typography variant="caption">{totalCount} items</Typography>
           </Box>
         </Box>
         <IconButton onClick={closeCart} sx={{ color: "#fff" }}>
@@ -125,157 +117,90 @@ const CartDrawer = () => {
         </IconButton>
       </Box>
 
-      {/* Cart Items */}
-      <Box
-        sx={{
-          flex: 1,
-          overflowY: "auto",
-          p: 2,
-          "&::-webkit-scrollbar": { width: "6px" },
-          "&::-webkit-scrollbar-thumb": {
-            background: "#2E7D32",
-            borderRadius: "10px",
-          },
-        }}
-      >
+      {/* Cart Items List */}
+      <Box sx={{ flex: 1, overflowY: "auto", p: 2 }}>
         {cartItems.length === 0 ? (
           <Box
             sx={{
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              justifyContent: "center",
-              py: 10,
+              mt: 10,
             }}
           >
             <ShoppingCartOutlined
-              sx={{ fontSize: 120, color: "text.disabled", mb: 2 }}
+              sx={{ fontSize: 60, color: "text.disabled", mb: 2 }}
             />
-            <Typography variant="h6" color="text.secondary" sx={{ mb: 1 }}>
-              Your cart is empty
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-              Add products to get started!
+            <Typography variant="h6" color="text.secondary">
+              Cart is empty
             </Typography>
             <Button
               variant="contained"
               onClick={closeCart}
-              endIcon={<ArrowForward />}
               sx={{
-                borderRadius: 50,
-                px: 4,
-                py: 1.5,
+                mt: 2,
                 background: "linear-gradient(135deg, #2E7D32 0%, #4CAF50 100%)",
-                fontWeight: 700,
-                boxShadow: "0 4px 15px rgba(46,125,50,0.3)",
               }}
             >
-              Continue Shopping
+              Start Shopping
             </Button>
           </Box>
         ) : (
           <AnimatePresence>
             {cartItems.map((item) => (
               <motion.div
-                key={item.cartId || item.id}
+                key={item.cartId}
                 layout
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, x: -100 }}
-                transition={{ duration: 0.3 }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
               >
-                {/* ... (item card JSX is unchanged) ... */}
                 <Paper
                   elevation={0}
                   sx={{
                     mb: 2,
                     p: 2,
-                    borderRadius: 4,
-                    border: "2px solid #e8f5e9",
-                    background: "#fff",
-                    transition: "all 0.3s",
-                    "&:hover": {
-                      boxShadow: "0 8px 24px rgba(46,125,50,0.15)",
-                      transform: "translateY(-2px)",
-                    },
+                    border: "1px solid #eee",
+                    borderRadius: 2,
                   }}
                 >
                   <Box sx={{ display: "flex", gap: 2 }}>
                     <Avatar
                       src={item.image}
                       variant="rounded"
-                      sx={{
-                        width: 90,
-                        height: 90,
-                        border: "3px solid #E8F5E9",
-                        borderRadius: 3,
-                      }}
+                      sx={{ width: 80, height: 80 }}
                     />
-                    <Box sx={{ flexGrow: 1 }}>
-                      <Typography
-                        variant="subtitle1"
-                        sx={{
-                          fontWeight: 700,
-                          color: "text.primary",
-                          mb: 0.5,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          display: "-webkit-box",
-                          WebkitLineClamp: 2,
-                          WebkitBoxOrient: "vertical",
-                        }}
-                      >
+                    <Box sx={{ flex: 1 }}>
+                      <Typography variant="subtitle1" fontWeight="700" noWrap>
                         {item.name}
                       </Typography>
-
                       {item.selectedVariant && (
-                        <Typography
-                          variant="caption"
-                          sx={{
-                            color: "text.secondary",
-                            display: "block",
-                            mb: 1,
-                          }}
-                        >
-                          {item.selectedVariant.color || ""}{" "}
-                          {item.selectedVariant.size
-                            ? ` / ${item.selectedVariant.size}`
+                        <Typography variant="caption" color="text.secondary">
+                          {item.selectedVariant.size || ""}
+                          {item.selectedVariant.size &&
+                          item.selectedVariant.color
+                            ? " / "
                             : ""}
+                          {item.selectedVariant.color || ""}
                         </Typography>
                       )}
-
-                      <Box sx={{ display: "flex", gap: 1, mb: 1 }}>
-                        <Typography
-                          variant="h6"
-                          sx={{ color: "#2E7D32", fontWeight: 800 }}
-                        >
-                          ₹{Number(item.price || 0).toFixed(2)}
-                        </Typography>
-                        {item.discount > 0 && (
-                          <Chip
-                            label={`${item.discount}% OFF`}
-                            size="small"
-                            color="success"
-                            sx={{ fontWeight: 700, height: 24 }}
-                          />
-                        )}
-                      </Box>
-
                       <Box
                         sx={{
                           display: "flex",
-                          alignItems: "center",
                           justifyContent: "space-between",
+                          alignItems: "center",
+                          mt: 1,
                         }}
                       >
+                        <Typography fontWeight="700" color="primary">
+                          ₹{item.price}
+                        </Typography>
                         <Box
                           sx={{
                             display: "flex",
                             alignItems: "center",
-                            gap: 0.5,
-                            bgcolor: "#E8F5E9",
-                            borderRadius: 50,
-                            p: 0.5,
+                            bgcolor: "#f5f5f5",
+                            borderRadius: 5,
                           }}
                         >
                           <IconButton
@@ -283,22 +208,10 @@ const CartDrawer = () => {
                             onClick={() =>
                               updateQuantity(item.cartId, item.quantity - 1)
                             }
-                            sx={{
-                              color: "#2E7D32",
-                              bgcolor: "#fff",
-                              "&:hover": { bgcolor: "#f1f8e9" },
-                            }}
                           >
                             <Remove fontSize="small" />
                           </IconButton>
-                          <Typography
-                            sx={{
-                              px: 2,
-                              fontWeight: 700,
-                              minWidth: 40,
-                              textAlign: "center",
-                            }}
-                          >
+                          <Typography sx={{ px: 1, fontWeight: 600 }}>
                             {item.quantity}
                           </Typography>
                           <IconButton
@@ -306,25 +219,14 @@ const CartDrawer = () => {
                             onClick={() =>
                               updateQuantity(item.cartId, item.quantity + 1)
                             }
-                            sx={{
-                              color: "#fff",
-                              bgcolor: "#2E7D32",
-                              "&:hover": { bgcolor: "#1B5E20" },
-                            }}
                           >
                             <Add fontSize="small" />
                           </IconButton>
                         </Box>
                         <IconButton
+                          color="error"
                           size="small"
                           onClick={() => removeFromCart(item.cartId)}
-                          sx={{
-                            color: "error.main",
-                            "&:hover": {
-                              bgcolor: "error.lighter",
-                              transform: "scale(1.1)",
-                            },
-                          }}
                         >
                           <Delete />
                         </IconButton>
@@ -338,114 +240,118 @@ const CartDrawer = () => {
         )}
       </Box>
 
-      {/* Footer */}
+      {/* Footer Section with Promocodes */}
       {cartItems.length > 0 && (
-        <Box
-          sx={{
-            p: 3,
-            background: "#fff",
-            boxShadow: "0 -8px 24px rgba(0,0,0,0.08)",
-          }}
-        >
-          {/* 10. ADD PROMOCODE SECTION */}
-          <Box sx={{ mb: 2 }}>
-            {appliedPromo ? (
-              <Chip
-                icon={<LocalOffer />}
-                label={`Code "${appliedPromo.code}" applied!`}
-                color="success"
-                onDelete={removePromocode}
-                deleteIcon={<Cancel />}
-                sx={{ fontWeight: 600 }}
-              />
-            ) : (
-              <Box sx={{ display: "flex", gap: 1 }}>
-                <TextField
-                  label="Promocode"
-                  size="small"
-                  variant="outlined"
-                  value={promoInput}
-                  onChange={(e) => setPromoInput(e.target.value)}
-                  disabled={promoLoading}
-                  sx={{ flex: 1 }}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <LocalOffer />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-                <Button
-                  variant="contained"
-                  onClick={handleApplyPromo}
-                  disabled={promoLoading}
-                  sx={{ px: 4 }}
-                >
-                  {promoLoading ? "..." : "Apply"}
-                </Button>
-              </Box>
-            )}
-          </Box>
-          {/* --- END PROMOCODE SECTION --- */}
-
-          <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
-            <Typography variant="body1" color="text.secondary">
-              Subtotal
-            </Typography>
-            <Typography variant="body1" sx={{ fontWeight: 600 }}>
-              ₹{subtotal.toFixed(2)}
-            </Typography>
-          </Box>
-
-          {/* 11. SHOW DISCOUNT IF APPLIED */}
-          {discountAmount > 0 && (
-            <Box
-              sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}
-            >
-              <Typography variant="body1" color="success.main">
-                Discount
-              </Typography>
+        <Box sx={{ boxShadow: "0 -4px 20px rgba(0,0,0,0.1)" }}>
+          {/* Promocode Recommendations */}
+          {coupons.length > 0 && !appliedPromo && (
+            <Box sx={{ px: 3, py: 1, bgcolor: "#f9f9f9" }}>
               <Typography
-                variant="body1"
-                sx={{ fontWeight: 600, color: "success.main" }}
+                variant="caption"
+                sx={{ mb: 1, fontWeight: 600, color: "text.secondary" }}
               >
-                - ₹{discountAmount.toFixed(2)}
+                Available Coupons:
               </Typography>
+              <Box sx={{ display: "flex", gap: 1, overflowX: "auto", pb: 1 }}>
+                {coupons.map((c) => (
+                  <Chip
+                    key={c.code}
+                    label={`${c.code} (${
+                      c.discountType === "Percentage"
+                        ? c.discountValue + "%"
+                        : "₹" + c.discountValue
+                    } OFF)`}
+                    onClick={() => handleApplyPromo(c.code)}
+                    clickable
+                    color="primary"
+                    variant="outlined"
+                    size="small"
+                    icon={<LocalOffer fontSize="small" />}
+                  />
+                ))}
+              </Box>
             </Box>
           )}
 
-          <Divider sx={{ my: 1.5 }} />
+          <Box sx={{ p: 3 }}>
+            {/* Promocode Input */}
+            <Box sx={{ display: "flex", gap: 1, mb: 2 }}>
+              {appliedPromo ? (
+                <Chip
+                  icon={<LocalOffer />}
+                  label={`Code: ${appliedPromo.code}`}
+                  onDelete={removePromocode}
+                  color="success"
+                  sx={{ width: "100%", justifyContent: "space-between" }}
+                />
+              ) : (
+                <>
+                  <TextField
+                    size="small"
+                    placeholder="Enter Promocode"
+                    fullWidth
+                    value={promoInput}
+                    onChange={(e) => setPromoInput(e.target.value)}
+                  />
+                  <Button
+                    variant="contained"
+                    onClick={() => handleApplyPromo()}
+                    disabled={promoLoading}
+                    sx={{ background: "#2E7D32" }}
+                  >
+                    Apply
+                  </Button>
+                </>
+              )}
+            </Box>
 
-          <Box sx={{ display: "flex", justifyContent: "space-between", mb: 3 }}>
-            <Typography variant="h6" sx={{ fontWeight: 800 }}>
-              Total
-            </Typography>
-            <Typography variant="h6" sx={{ fontWeight: 800, color: "#2E7D32" }}>
-              ₹{total.toFixed(2)}
-            </Typography>
+            <Box
+              sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}
+            >
+              <Typography>Subtotal</Typography>
+              <Typography fontWeight="600">₹{subtotal.toFixed(2)}</Typography>
+            </Box>
+            {discountAmount > 0 && (
+              <Box
+                sx={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  mb: 1,
+                  color: "success.main",
+                }}
+              >
+                <Typography>Discount</Typography>
+                <Typography fontWeight="600">
+                  - ₹{discountAmount.toFixed(2)}
+                </Typography>
+              </Box>
+            )}
+            <Divider sx={{ my: 1 }} />
+            <Box
+              sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}
+            >
+              <Typography variant="h6" fontWeight="800">
+                Total
+              </Typography>
+              <Typography variant="h6" fontWeight="800" color="primary">
+                ₹{total.toFixed(2)}
+              </Typography>
+            </Box>
+            <Button
+              fullWidth
+              variant="contained"
+              size="large"
+              endIcon={<ArrowForward />}
+              onClick={handleCheckout}
+              sx={{
+                borderRadius: 50,
+                py: 1.5,
+                background: "linear-gradient(135deg, #2E7D32 0%, #4CAF50 100%)",
+              }}
+            >
+              Proceed to Checkout
+            </Button>
           </Box>
-          <Button
-            variant="contained"
-            fullWidth
-            size="large"
-            onClick={handleCheckout}
-            endIcon={<ArrowForward />}
-            sx={{
-              borderRadius: 50,
-              py: 1.8,
-              fontSize: "1.1rem",
-              fontWeight: 800,
-              background: "linear-gradient(135deg, #2E7D32 0%, #4CAF50 100%)",
-              boxShadow: "0 6px 20px rgba(46,125,50,0.35)",
-              "&:hover": {
-                background: "linear-gradient(135deg, #1B5E20 0%, #2E7D32 100%)",
-                boxShadow: "0 8px 28px rgba(46,125,50,0.45)",
-              },
-            }}
-          >
-            Proceed to Checkout
-          </Button>
         </Box>
       )}
     </Drawer>

@@ -1,32 +1,47 @@
-// File: rathod-mart/RATHOD-MART.../src/data/api.js
 import axios from "axios";
-// --- ADD THIS IMPORT ---
 import { getCategoryIcon, getCategoryColor } from "../utils/categoryIcons.js";
 
-/**
- * CRA env:
- * REACT_APP_API_URL    -> e.g. http://localhost:5000
- * REACT_APP_API_PREFIX -> e.g. /api (default /api)
- */
+// --- CONFIGURATION ---
 const RAW_BASE =
   (process.env.REACT_APP_API_URL && String(process.env.REACT_APP_API_URL)) ||
   "http://localhost:5000";
 
-const API_BASE = RAW_BASE.replace(/\/+$/, "");
+// Ensure no trailing slash on RAW_BASE
+const SERVER_URL = RAW_BASE.replace(/\/+$/, "");
+
 const API_PREFIX =
   (process.env.REACT_APP_API_PREFIX &&
     String(process.env.REACT_APP_API_PREFIX)) ||
   "/api";
 
+// --- AXIOS INSTANCE ---
 const http = axios.create({
-  baseURL: `${API_BASE}${API_PREFIX}`, // => http://localhost:5000/api
-  withCredentials: true, // ensure cookies (session) are sent for auth endpoints
+  baseURL: `${SERVER_URL}${API_PREFIX}`, // e.g. http://localhost:5000/api
+  withCredentials: true, // ensure cookies are sent
   headers: {
     "Content-Type": "application/json",
   },
 });
 
 /* ---------- Helpers ---------- */
+
+/**
+ * Helper to get full image URL correctly
+ * If URL starts with /, prepend server base. If http, leave it.
+ */
+const getImageUrl = (path) => {
+  if (!path) return null;
+  if (
+    path.startsWith("http") ||
+    path.startsWith("blob:") ||
+    path.startsWith("data:")
+  )
+    return path;
+
+  // Remove leading slash if present to avoid double slash
+  const cleanPath = path.startsWith("/") ? path.slice(1) : path;
+  return `${SERVER_URL}/${cleanPath}`;
+};
 
 /* Build query string from object (arrays allowed) */
 const buildQuery = (params = {}) => {
@@ -43,92 +58,75 @@ const buildQuery = (params = {}) => {
   return qs ? `?${qs}` : "";
 };
 
-/* Make any relative image path absolute */
-const ensureFullUrl = (url) => {
-  if (!url) return null;
-  if (/^https?:\/\//i.test(url)) return url;
-  return `${API_BASE}${url.startsWith("/") ? "" : "/"}${url}`;
-};
-
 /* Normalize backend product for UI */
 const normalizeProduct = (raw = {}) => {
   const p = { ...raw };
   p.id = p._id || p.id;
 
-  // images -> objects with fullUrl and other metadata
+  // Normalize Images
   let imagesObj = [];
   if (Array.isArray(p.images)) {
-    imagesObj = p.images.map((img) => {
-      const c = { ...(img || {}) };
-      c.fullUrl =
-        c.fullUrl ||
-        c.fullImageUrl ||
-        ensureFullUrl(c.url) ||
-        ensureFullUrl(c.imageUrl) ||
-        null;
-      c.variantId =
-        c.variantId ||
-        (c.variant &&
-          (typeof c.variant === "object"
-            ? c.variant._id || c.variant
-            : c.variant)) ||
-        null;
-      c.isPrimary = c.isPrimary || c.is_primary || c.primary || false;
-      return c;
-    });
+    imagesObj = p.images.map((img) => ({
+      ...img,
+      // Use getImageUrl to ensure full path
+      fullUrl: getImageUrl(
+        img.fullUrl || img.fullImageUrl || img.url || img.imageUrl
+      ),
+      isPrimary: img.isPrimary || img.is_primary || img.primary || false,
+      variantId:
+        img.variantId ||
+        (img.variant &&
+          (typeof img.variant === "object" ? img.variant._id : img.variant)) ||
+        null,
+    }));
   }
-
   p.images = imagesObj;
 
-  // choose primary image
-  const primaryImg = imagesObj.find((i) => i.isPrimary) || imagesObj[0] || null;
-  if (p.primaryImageFullUrl) {
-    p.image = p.primaryImageFullUrl;
-  } else if (p.primaryImage) {
-    p.image = ensureFullUrl(p.primaryImage);
-  } else if (primaryImg) {
-    p.image = primaryImg.fullUrl || null;
+  // Determine Primary Image
+  const primaryImg = imagesObj.find((i) => i.isPrimary) || imagesObj[0];
+
+  // Priority: Explicit primary -> First image -> 'image' field -> Placeholder
+  if (primaryImg) {
+    p.image = primaryImg.fullUrl;
   } else if (p.image) {
-    p.image = ensureFullUrl(p.image);
+    p.image = getImageUrl(p.image);
   } else {
-    p.image = null;
+    p.image = "/images/placeholder.webp"; // Ensure you have a placeholder
   }
 
-  // discountPercent
-  if (typeof p.discount === "number") {
-    p.discountPercent = p.discount;
-  } else if (
-    typeof p.basePrice === "number" &&
-    typeof p.discountPrice === "number" &&
-    p.basePrice > 0
-  ) {
-    const pct = Math.round((1 - p.discountPrice / p.basePrice) * 100);
-    p.discountPercent = pct > 0 ? pct : 0;
-  } else {
-    p.discountPercent = 0;
+  // Normalize Stock (Check both fields from backend)
+  p.stock = p.totalStock ?? p.stock ?? 0;
+  p.inStock = p.stock > 0;
+
+  // Normalize Price & Discount
+  p.price = p.discountPrice ?? p.basePrice ?? 0;
+  p.originalPrice =
+    p.discountPrice && p.discountPrice < p.basePrice ? p.basePrice : null;
+
+  if (typeof p.discountPercent !== "number") {
+    if (
+      p.basePrice > 0 &&
+      p.discountPrice > 0 &&
+      p.discountPrice < p.basePrice
+    ) {
+      p.discountPercent = Math.round(
+        ((p.basePrice - p.discountPrice) / p.basePrice) * 100
+      );
+    } else {
+      p.discountPercent = 0;
+    }
   }
 
-  p.name = p.name || p.title || "Untitled product";
+  // Text Fields
+  p.name = p.name || p.title || "Untitled Product";
   p.shortDescription = p.shortDescription || p.description || "";
   p.description = p.description || p.longDescription || "";
 
-  // price fields
-  p.price = p.discountPrice ?? p.basePrice ?? null;
-  p.originalPrice =
-    typeof p.discountPrice === "number" && p.discountPrice < p.basePrice
-      ? p.basePrice
-      : null;
+  // Rating
+  p.rating = typeof p.rating === "number" ? p.rating : 0;
+  p.reviews = typeof p.reviewCount === "number" ? p.reviewCount : 0;
 
-  // stock
-  p.stock = p.totalStock ?? p.stock ?? 0;
-  p.inStock = (p.totalStock ?? p.stock ?? 0) > 0;
-
-  // rating & reviews
-  p.rating = typeof p.rating === "number" ? p.rating : p.avgRating ?? 0;
-  p.reviews =
-    typeof p.reviewCount === "number" ? p.reviewCount : p.reviews || 0;
-
-  // variants
+  // Normalize Variants
   p.variants = (p.variants || []).map((v) => {
     const id = v._id || v.id;
     const colorObj = v.color
@@ -139,6 +137,7 @@ const normalizeProduct = (raw = {}) => {
           }
         : { name: v.color, value: "" }
       : null;
+
     const sizeObj = v.size
       ? typeof v.size === "object"
         ? {
@@ -148,38 +147,18 @@ const normalizeProduct = (raw = {}) => {
         : { name: v.size, value: "" }
       : null;
 
-    const vImages = imagesObj
-      .filter((img) => {
-        if (!img.variantId) return false;
-        try {
-          return String(img.variantId) === String(id);
-        } catch {
-          return false;
-        }
-      })
-      .map((img) => img.fullUrl)
-      .filter(Boolean);
-
     return {
       id,
       _id: id,
-      sku: v.sku || v.SKU || null,
+      sku: v.sku || null,
       price: v.price ?? null,
       stock: v.currentStock ?? v.stock ?? 0,
       color: colorObj,
       size: sizeObj,
-      images: vImages,
+      images: v.images || [], // Variant specific images if any
       raw: v,
     };
   });
-
-  // generalImages = images not tied to variant
-  p.generalImages = imagesObj
-    .filter((img) => !img.variantId)
-    .map((img) => img.fullUrl)
-    .filter(Boolean);
-
-  p.imagesUrls = imagesObj.map((im) => im.fullUrl).filter(Boolean) || [];
 
   return p;
 };
@@ -188,7 +167,6 @@ const normalizeProduct = (raw = {}) => {
 
 /**
  * Fetch products (list)
- * params: { page, limit, q, category, brand, sort, etc. }
  */
 export const fetchProducts = async (params = {}) => {
   const qs = buildQuery(params);
@@ -218,37 +196,36 @@ export const fetchProductById = async (id) => {
 
 /**
  * Fetch product variants (inventory controller)
- * expected endpoint: GET /inventory/product-variants/:productId
  */
 export const fetchProductVariants = async (productId) => {
   if (!productId) return [];
   try {
     const { data } = await http.get(`/inventory/product-variants/${productId}`);
     const arr = data?.data || [];
+
+    // Normalize variant structure
     return arr.map((v) => {
       const id = v._id || v.id;
       const color =
         v.color && typeof v.color === "object"
           ? {
-              name: v.color.sizeName || v.color.name || v.color.colorName || "",
+              name: v.color.colorName || v.color.name || "",
               value: v.color.value || "",
             }
-          : v.color
-          ? { name: v.color, value: "" }
-          : null;
+          : { name: "N/A", value: "" };
+
       const size =
         v.size && typeof v.size === "object"
           ? {
               name: v.size.sizeName || v.size.name || "",
               value: v.size.value || "",
             }
-          : v.size
-          ? { name: v.size, value: "" }
-          : null;
+          : { name: "N/A", value: "" };
+
       return {
         id,
         _id: id,
-        sku: v.sku || v.SKU || null,
+        sku: v.sku || null,
         price: v.price ?? null,
         stock: v.currentStock ?? v.stock ?? 0,
         color,
@@ -262,7 +239,6 @@ export const fetchProductVariants = async (productId) => {
   }
 };
 
-// --- REPLACE THIS FUNCTION ---
 /**
  * Fetch categories
  */
@@ -272,15 +248,12 @@ export const fetchCategories = async (params = {}) => {
     const { data } = await http.get(`/categories${qs}`);
     const arr = data?.data || [];
 
-    // Normalize backend data to match frontend expectations
     return arr.map((cat) => ({
-      id: cat._id, // Use _id as the main id
+      id: cat._id,
       _id: cat._id,
       name: cat.name,
-      // Use backend icon/color first, or fallback to the utility function
       icon: cat.icon || getCategoryIcon(cat.name),
       color: cat.color || getCategoryColor(cat.name),
-      // Use the product count from the backend
       count: cat.productsCount || 0,
       slug: cat.slug,
     }));
@@ -289,7 +262,6 @@ export const fetchCategories = async (params = {}) => {
     return [];
   }
 };
-// --- END OF REPLACED FUNCTION ---
 
 /**
  * Fetch brands
@@ -300,7 +272,6 @@ export const fetchBrands = async (params = {}) => {
     const { data } = await http.get(`/brands${qs}`);
     return data?.data || [];
   } catch (err) {
-    console.error("fetchBrands error:", err?.message || err);
     return [];
   }
 };
@@ -313,19 +284,28 @@ export const fetchOfferProducts = async ({
   limit = 48,
 } = {}) => {
   try {
+    // We reuse fetchProducts but filter on client or server depending on API capability
+    // For now, assuming client filtering if server param doesn't exist
     const prods = await fetchProducts({ limit });
     return prods.filter((p) => (p.discountPercent || 0) >= minDiscount);
   } catch (err) {
-    console.error("fetchOfferProducts error:", err?.message || err);
+    return [];
+  }
+};
+
+/**
+ * Fetch available coupons
+ */
+export const fetchAvailableCoupons = async () => {
+  try {
+    const { data } = await http.get("/promocodes/available");
+    return data.data || [];
+  } catch {
     return [];
   }
 };
 
 /* --- Reviews --- */
-/**
- * Get all approved reviews for a product
- * returns raw response (data, pagination)
- */
 export const fetchReviewsForProduct = async (productId, params = {}) => {
   if (!productId) throw new Error("Product ID is required");
   const qs = buildQuery(params);
@@ -333,45 +313,42 @@ export const fetchReviewsForProduct = async (productId, params = {}) => {
     const { data } = await http.get(`/reviews/${productId}${qs}`);
     return data;
   } catch (err) {
-    console.error("fetchReviewsForProduct error:", err?.message || err);
     throw err;
   }
 };
 
-/**
- * Submit a new review for a product
- */
 export const submitReview = async (productId, reviewData) => {
   if (!productId) throw new Error("Product ID is required");
   try {
     const { data } = await http.post(`/reviews/${productId}`, reviewData);
     return data;
   } catch (err) {
-    console.error("submitReview error:", err?.message || err);
     throw err;
   }
 };
 
-/* ---------- Expose simple http methods + helpers ---------- */
+/* ---------- Export ---------- */
 const api = {
-  // raw axios helpers (useful for auth endpoints like /users/login, /users/logout)
+  // Raw axios methods
   post: http.post.bind(http),
   get: http.get.bind(http),
   put: http.put ? http.put.bind(http) : undefined,
   delete: http.delete ? http.delete.bind(http) : undefined,
 
-  // domain-specific functions
+  // Domain methods
   fetchProducts,
   fetchProductById,
   fetchProductVariants,
   fetchCategories,
   fetchBrands,
   fetchOfferProducts,
+  fetchAvailableCoupons,
   fetchReviewsForProduct,
   submitReview,
-  // helpers if needed externally
+
+  // Helpers
   buildQuery,
-  ensureFullUrl,
+  getImageUrl,
   normalizeProduct,
 };
 

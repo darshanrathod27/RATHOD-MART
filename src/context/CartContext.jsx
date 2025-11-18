@@ -1,4 +1,4 @@
-// rathod-mart/src/context/CartContext.jsx
+// src/context/CartContext.jsx
 import React, {
   createContext,
   useContext,
@@ -6,194 +6,293 @@ import React, {
   useEffect,
   useCallback,
 } from "react";
-import { useSelector } from "react-redux";
+import { useSelector, useDispatch } from "react-redux";
 import api from "../data/api";
 import toast from "react-hot-toast";
+import { openLoginDrawer } from "../store/authSlice";
 
 const CartContext = createContext();
 
 export const useCart = () => {
-  const context = useContext(CartContext);
-  if (!context) throw new Error("useCart must be used within CartProvider");
-  return context;
+  const ctx = useContext(CartContext);
+  if (!ctx) throw new Error("useCart must be used within CartProvider");
+  return ctx;
+};
+
+/**
+ * Normalize backend or guest cart items into a consistent UI shape.
+ * Accepts: backend items (with product, variant objects) or guest items (already shaped).
+ */
+const normalizeCartItems = (items = []) => {
+  if (!Array.isArray(items)) return [];
+
+  return items.map((item) => {
+    // If already normalized (guest item), ensure defaults
+    if (item.cartId) {
+      return {
+        cartId: item.cartId,
+        id: item.id,
+        name: item.name || "Product",
+        image: item.image || "/placeholder.png",
+        price: Number(item.price || 0),
+        quantity: Number(item.quantity || 1),
+        stock: Number(item.stock || 0),
+        selectedVariant: item.selectedVariant || null,
+        raw: item.raw ?? item,
+      };
+    }
+
+    // Backend-shaped item
+    const product = item.product || {};
+    const variant = item.variant || null;
+    const pId = product._id || product.id || item.product;
+    const vId = variant?._id || variant?.id || null;
+    const cartId = vId ? `${pId}_${vId}` : `${pId}`;
+
+    // Image selection: product primary image > first image > product.image > placeholder
+    let displayImage = "/placeholder.png";
+    try {
+      if (Array.isArray(product.images) && product.images.length > 0) {
+        const primary =
+          product.images.find((img) => img.isPrimary) || product.images[0];
+        displayImage = primary?.fullUrl || primary?.url || displayImage;
+      } else if (product.image) {
+        displayImage = product.image;
+      }
+    } catch (e) {
+      // fallback to placeholder
+    }
+
+    return {
+      cartId,
+      id: pId,
+      name: product.name || item.name || "Product",
+      image: displayImage,
+      price: Number(
+        item.price ?? product.discountPrice ?? product.basePrice ?? 0
+      ),
+      quantity: Number(item.quantity ?? 1),
+      stock: Number(product.totalStock ?? product.stock ?? item.stock ?? 0),
+      selectedVariant: variant
+        ? {
+            id: variant._id || variant.id || variant,
+            color:
+              variant?.color?.colorName ||
+              variant?.color?.value ||
+              variant?.color,
+            size:
+              variant?.size?.sizeName || variant?.size?.value || variant?.size,
+          }
+        : null,
+      raw: item,
+    };
+  });
 };
 
 export const CartProvider = ({ children }) => {
   const { isAuthenticated } = useSelector((state) => state.auth);
+  const dispatch = useDispatch();
 
   const [cartItems, setCartItems] = useState([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [appliedPromo, setAppliedPromo] = useState(null);
 
-  // --- REFACTORED: Function to fetch cart from server ---
-  const fetchCart = useCallback(async () => {
-    if (!isAuthenticated) return; // Only run if logged in
+  const STORAGE_KEY = "guestCartItems";
 
+  // Fetch server cart for authenticated users
+  const fetchCart = useCallback(async () => {
+    if (!isAuthenticated) return;
     setLoading(true);
     try {
       const { data } = await api.get("/cart");
-      setCartItems(data.data || []);
+      setCartItems(normalizeCartItems(data?.data || []));
     } catch (err) {
       console.error("Failed to fetch cart", err);
-      // Don't toast on silent fetch
     } finally {
       setLoading(false);
     }
   }, [isAuthenticated]);
 
-  // Sync cart on login/logout
+  // Sync on mount / auth change: merge guest cart into user cart on login or load guest cart
   useEffect(() => {
-    const syncCart = async () => {
+    const sync = async () => {
       if (isAuthenticated) {
         setLoading(true);
         try {
-          const guestItems = JSON.parse(
-            localStorage.getItem("guestCartItems") || "[]"
-          );
-
-          if (guestItems.length > 0) {
-            // Merge guest cart, API returns the new synced cart
-            const { data: mergedCart } = await api.post("/cart/merge", {
-              items: guestItems,
-            });
-            setCartItems(mergedCart.data || []);
-            localStorage.removeItem("guestCartItems");
+          const guest = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+          if (Array.isArray(guest) && guest.length > 0) {
+            const items = guest.map((i) => ({
+              productId: i.id,
+              variantId: i.selectedVariant?.id || null,
+              quantity: i.quantity,
+            }));
+            const { data } = await api.post("/cart/merge", { items });
+            setCartItems(normalizeCartItems(data?.data || []));
+            localStorage.removeItem(STORAGE_KEY);
+            toast.success("Guest cart merged!");
           } else {
-            // No merge, just fetch the user's cart
             await fetchCart();
           }
-        } catch (err) {
-          console.error("Failed to sync cart", err);
-          toast.error("Could not load cart");
+        } catch (e) {
+          console.error("Cart sync error", e);
+          await fetchCart();
         } finally {
           setLoading(false);
         }
       } else {
-        // --- USER IS A GUEST ---
-        const saved = localStorage.getItem("guestCartItems");
-        setCartItems(saved ? JSON.parse(saved) : []);
+        const saved = localStorage.getItem(STORAGE_KEY);
+        setCartItems(normalizeCartItems(saved ? JSON.parse(saved) : []));
         setAppliedPromo(null);
-        setLoading(false);
       }
     };
-    syncCart();
+    sync();
   }, [isAuthenticated, fetchCart]);
 
-  // Save to localStorage ONLY if guest
+  // Persist guest cart locally
   useEffect(() => {
     if (!isAuthenticated) {
-      localStorage.setItem("guestCartItems", JSON.stringify(cartItems));
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(cartItems));
+      } catch (e) {
+        console.error("Failed to persist guest cart", e);
+      }
     }
   }, [cartItems, isAuthenticated]);
 
-  // --- REFACTORED: All cart functions now update from server response ---
+  /**
+   * Add to cart (handles both guest & authenticated)
+   * product: product object (from product list/detail)
+   * variant: variant object or null
+   * qty: number
+   */
+  const addToCart = async (product, variant = null, qty = 1) => {
+    if (!product) return;
+    const stock = product.totalStock ?? product.stock ?? 0;
+    if (stock < qty) {
+      toast.error("Sorry, this product is out of stock!");
+      return;
+    }
 
-  const addToCart = async (product, variant = null) => {
-    const cartId = variant
-      ? `${product.id || product._id}_${variant.id || variant._id}`
-      : `${product.id || product._id}`;
+    const pId = product.id || product._id;
+    const vId = variant?.id || variant?._id || null;
+    const cartId = vId ? `${pId}_${vId}` : `${pId}`;
 
     if (isAuthenticated) {
-      // --- LOGGED IN: Call API first ---
       try {
         const { data } = await api.post("/cart/add", {
-          productId: product.id || product._id,
-          variantId: variant ? variant.id || variant._id : null,
-          quantity: 1,
+          productId: pId,
+          variantId: vId,
+          quantity: qty,
         });
-        setCartItems(data.data || []); // Set state from server response
+        setCartItems(normalizeCartItems(data?.data || []));
+        toast.success("Added to cart!");
       } catch (err) {
-        toast.error("Failed to add item to cart");
+        toast.error(err?.response?.data?.message || "Failed to add to cart");
+        console.error("addToCart error", err);
       }
     } else {
-      // --- GUEST: Update local state ---
+      // Guest local cart
       setCartItems((prev) => {
-        const exists = prev.find((item) => item.cartId === cartId);
-        if (exists) {
-          return prev.map((item) =>
-            item.cartId === cartId
-              ? { ...item, quantity: item.quantity + 1 }
-              : item
+        const existing = prev.find((i) => i.cartId === cartId);
+        if (existing) {
+          if (existing.quantity + qty > stock) {
+            toast.error("Cannot add more, stock limit reached.");
+            return prev;
+          }
+          toast.success("Cart updated!");
+          return prev.map((i) =>
+            i.cartId === cartId ? { ...i, quantity: i.quantity + qty } : i
           );
         }
+
+        // pick image
+        let img = "/placeholder.png";
+        if (product.images?.length) {
+          const primary =
+            product.images.find((im) => im.isPrimary) || product.images[0];
+          img = primary?.fullUrl || primary?.url || img;
+        } else if (product.image) {
+          img = product.image;
+        }
+
         const newItem = {
-          id: product.id || product._id,
           cartId,
-          name: product.name,
-          image: product.image,
-          price: variant ? variant.price : product.price ?? 0,
-          originalPrice: product.originalPrice ?? null,
-          discount: product.discountPercent ?? 0,
-          quantity: 1,
+          id: pId,
+          name: product.name || "Product",
+          image: img,
+          price:
+            variant?.price ?? product.discountPrice ?? product.basePrice ?? 0,
+          quantity: qty,
+          stock,
           selectedVariant: variant
             ? {
-                id: variant.id || variant._id,
-                sku: variant.sku || null,
-                color: variant.color?.name || variant.color?.value || null,
-                size: variant.size?.name || variant.size?.value || null,
+                id: vId,
+                color:
+                  variant.color?.name || variant.color?.value || variant.color,
+                size: variant.size?.name || variant.size?.value || variant.size,
               }
             : null,
-          productRef: product,
+          raw: { product, variant, quantity: qty },
         };
+        toast.success("Added to cart!");
         return [...prev, newItem];
       });
     }
   };
 
   const removeFromCart = async (cartId) => {
-    const itemToRemove = cartItems.find((item) => item.cartId === cartId);
-    if (!itemToRemove) return;
+    const item = cartItems.find((i) => i.cartId === cartId);
+    if (!item) return;
 
-    // Optimistic update for UI speed
-    setCartItems((prev) => prev.filter((item) => item.cartId !== cartId));
+    // optimistic update
+    const previous = [...cartItems];
+    setCartItems((prev) => prev.filter((i) => i.cartId !== cartId));
+    toast.success("Removed from cart");
 
     if (isAuthenticated) {
       try {
-        const { data } = await api.post("/cart/remove", {
-          productId: itemToRemove.id,
-          variantId: itemToRemove.selectedVariant
-            ? itemToRemove.selectedVariant.id
-            : null,
+        await api.post("/cart/remove", {
+          productId: item.id,
+          variantId: item.selectedVariant?.id || null,
         });
-        setCartItems(data.data || []); // Re-sync with server
       } catch (err) {
-        toast.error("Failed to remove item");
-        setCartItems((prev) => [...prev, itemToRemove]); // Rollback
+        toast.error("Failed to sync removal");
+        setCartItems(previous); // rollback
+        console.error("removeFromCart error", err);
       }
     }
   };
 
-  const updateQuantity = async (cartId, quantity) => {
-    if (quantity <= 0) {
-      removeFromCart(cartId);
+  const updateQuantity = async (cartId, newQty) => {
+    if (newQty < 1) {
+      return removeFromCart(cartId);
+    }
+
+    const item = cartItems.find((i) => i.cartId === cartId);
+    if (!item) return;
+
+    if (item.stock < newQty) {
+      toast.error(`Only ${item.stock} items in stock`);
       return;
     }
 
-    const itemToUpdate = cartItems.find((item) => item.cartId === cartId);
-    if (!itemToUpdate) return;
-
-    // Optimistic update
-    const oldCart = cartItems;
+    const previous = [...cartItems];
     setCartItems((prev) =>
-      prev.map((item) =>
-        item.cartId === cartId ? { ...item, quantity } : item
-      )
+      prev.map((i) => (i.cartId === cartId ? { ...i, quantity: newQty } : i))
     );
 
     if (isAuthenticated) {
       try {
-        const { data } = await api.post("/cart/update", {
-          productId: itemToUpdate.id,
-          variantId: itemToUpdate.selectedVariant
-            ? itemToUpdate.selectedVariant.id
-            : null,
-          quantity: quantity,
+        await api.post("/cart/update", {
+          productId: item.id,
+          variantId: item.selectedVariant?.id || null,
+          quantity: newQty,
         });
-        setCartItems(data.data || []); // Re-sync
       } catch (err) {
         toast.error("Failed to update quantity");
-        setCartItems(oldCart); // Rollback
+        setCartItems(previous);
+        console.error("updateQuantity error", err);
       }
     }
   };
@@ -204,31 +303,27 @@ export const CartProvider = ({ children }) => {
     if (isAuthenticated) {
       try {
         await api.post("/cart/clear");
-      } catch (err) {
-        toast.error("Failed to clear cart");
-        // No rollback needed, just refetch
-        fetchCart();
+      } catch (e) {
+        console.error("clearCart error", e);
       }
     }
   };
 
-  // --- NEW: applyPromocode calls new backend route ---
+  // Promocode logic (server-validated)
   const applyPromocode = async (code) => {
+    if (!code) return;
     if (!isAuthenticated) {
-      toast.error("Please login to apply promocodes");
-      throw new Error("Not logged in");
+      dispatch(openLoginDrawer());
+      return;
     }
     try {
-      // Call the NEW promocode validation route
       const { data } = await api.post("/promocodes/validate", { code });
-      setAppliedPromo(data.data); // data.data contains the promo object
-      toast.success(`Promocode "${data.data.code}" applied!`);
+      setAppliedPromo(data?.data || null);
+      toast.success("Promocode applied!");
     } catch (err) {
       setAppliedPromo(null);
-      const errMsg =
-        err.response?.data?.message || err.message || "Invalid code";
-      toast.error(errMsg);
-      throw new Error(errMsg); // Re-throw for form to handle loading state
+      toast.error(err?.response?.data?.message || "Invalid coupon");
+      console.error("applyPromocode error", err);
     }
   };
 
@@ -237,73 +332,53 @@ export const CartProvider = ({ children }) => {
     toast.success("Promocode removed");
   };
 
-  const getCartSubtotal = () =>
-    cartItems.reduce(
-      (total, item) => total + Number(item.price || 0) * item.quantity,
+  const getCartTotal = () => {
+    const subtotal = cartItems.reduce(
+      (acc, i) => acc + Number(i.price || 0) * Number(i.quantity || 0),
       0
     );
-
-  const getCartTotal = () => {
-    const subtotal = getCartSubtotal();
-    let total = subtotal;
     let discountAmount = 0;
 
     if (appliedPromo) {
-      // Check min purchase again
-      if (subtotal < appliedPromo.minPurchase) {
-        removePromocode();
-        toast.error(
-          `Cart total is below minimum of ₹${appliedPromo.minPurchase}`
-        );
-        return { subtotal, total: subtotal, discountAmount: 0 };
-      }
-
-      // Calculate discount
-      if (appliedPromo.discountType === "Fixed") {
-        discountAmount = appliedPromo.discountValue;
-      } else if (appliedPromo.discountType === "Percentage") {
-        discountAmount = subtotal * (appliedPromo.discountValue / 100);
-        if (
-          appliedPromo.maxDiscount &&
-          discountAmount > appliedPromo.maxDiscount
-        ) {
-          discountAmount = appliedPromo.maxDiscount;
+      if (subtotal >= (appliedPromo.minPurchase || 0)) {
+        if (appliedPromo.discountType === "Fixed") {
+          discountAmount = Number(appliedPromo.discountValue || 0);
+        } else {
+          discountAmount =
+            (subtotal * Number(appliedPromo.discountValue || 0)) / 100;
+          if (appliedPromo.maxDiscount)
+            discountAmount = Math.min(discountAmount, appliedPromo.maxDiscount);
         }
+      } else {
+        // promo not applicable due to minPurchase — keep discount 0
       }
-      total = subtotal - discountAmount;
     }
 
     return {
-      subtotal: subtotal,
-      total: Math.max(total, 0),
-      discountAmount: discountAmount,
+      subtotal,
+      discountAmount,
+      total: Math.max(0, subtotal - discountAmount),
     };
   };
-
-  const getCartItemsCount = () =>
-    cartItems.reduce((total, item) => total + item.quantity, 0);
-
-  const openCart = () => setIsCartOpen(true);
-  const closeCart = () => setIsCartOpen(false);
 
   return (
     <CartContext.Provider
       value={{
         cartItems,
+        isCartOpen,
+        loading,
+        appliedPromo,
+        openCart: () => setIsCartOpen(true),
+        closeCart: () => setIsCartOpen(false),
         addToCart,
         removeFromCart,
         updateQuantity,
         clearCart,
-        getCartSubtotal,
-        getCartTotal,
-        getCartItemsCount,
-        isCartOpen,
-        openCart,
-        closeCart,
-        loading,
-        appliedPromo,
         applyPromocode,
         removePromocode,
+        getCartTotal,
+        getCartItemsCount: () =>
+          cartItems.reduce((acc, i) => acc + Number(i.quantity || 0), 0),
       }}
     >
       {children}
