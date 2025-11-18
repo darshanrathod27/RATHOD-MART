@@ -13,78 +13,52 @@ import { openLoginDrawer } from "../store/authSlice";
 
 const CartContext = createContext();
 
-export const useCart = () => {
-  const ctx = useContext(CartContext);
-  if (!ctx) throw new Error("useCart must be used within CartProvider");
-  return ctx;
-};
+export const useCart = () => useContext(CartContext);
 
-/**
- * Normalize backend or guest cart items into a consistent UI shape.
- * Accepts: backend items (with product, variant objects) or guest items (already shaped).
- */
-const normalizeCartItems = (items = []) => {
+// Helper: Normalize cart items
+const normalizeCartItems = (items) => {
   if (!Array.isArray(items)) return [];
-
   return items.map((item) => {
-    // If already normalized (guest item), ensure defaults
-    if (item.cartId) {
-      return {
-        cartId: item.cartId,
-        id: item.id,
-        name: item.name || "Product",
-        image: item.image || "/placeholder.png",
-        price: Number(item.price || 0),
-        quantity: Number(item.quantity || 1),
-        stock: Number(item.stock || 0),
-        selectedVariant: item.selectedVariant || null,
-        raw: item.raw ?? item,
-      };
-    }
+    if (item.cartId) return item; // Already normalized
 
-    // Backend-shaped item
     const product = item.product || {};
-    const variant = item.variant || null;
-    const pId = product._id || product.id || item.product;
-    const vId = variant?._id || variant?.id || null;
+    const variant = item.variant || {};
+
+    // IDs
+    const pId = product._id || product.id || item.id;
+    const vId = variant._id || variant.id;
     const cartId = vId ? `${pId}_${vId}` : `${pId}`;
 
-    // Image selection: product primary image > first image > product.image > placeholder
+    // IMAGE FIX: Use api.getImageUrl to handle relative paths
     let displayImage = "/placeholder.png";
-    try {
-      if (Array.isArray(product.images) && product.images.length > 0) {
-        const primary =
-          product.images.find((img) => img.isPrimary) || product.images[0];
-        displayImage = primary?.fullUrl || primary?.url || displayImage;
-      } else if (product.image) {
-        displayImage = product.image;
-      }
-    } catch (e) {
-      // fallback to placeholder
+    if (product.images?.length > 0) {
+      const primary = product.images.find((img) => img.isPrimary);
+      const imgPath = primary ? primary.url : product.images[0].url;
+      displayImage = api.getImageUrl(imgPath);
+    } else if (product.image) {
+      displayImage = api.getImageUrl(product.image);
+    } else if (item.image) {
+      displayImage = api.getImageUrl(item.image);
     }
+
+    // STOCK FIX: Use totalStock or stock
+    const stock = product.totalStock ?? product.stock ?? item.stock ?? 0;
 
     return {
       cartId,
       id: pId,
       name: product.name || item.name || "Product",
-      image: displayImage,
-      price: Number(
-        item.price ?? product.discountPrice ?? product.basePrice ?? 0
-      ),
-      quantity: Number(item.quantity ?? 1),
-      stock: Number(product.totalStock ?? product.stock ?? item.stock ?? 0),
-      selectedVariant: variant
+      image: displayImage, // Corrected Image URL
+      price: item.price || product.discountPrice || product.basePrice || 0,
+      quantity: item.quantity || 1,
+      stock: stock, // Corrected Stock
+      selectedVariant: vId
         ? {
-            id: variant._id || variant.id || variant,
-            color:
-              variant?.color?.colorName ||
-              variant?.color?.value ||
-              variant?.color,
-            size:
-              variant?.size?.sizeName || variant?.size?.value || variant?.size,
+            id: vId,
+            color: variant.color?.colorName || variant.color?.value,
+            size: variant.size?.sizeName || variant.size?.value,
           }
         : null,
-      raw: item,
     };
   });
 };
@@ -98,15 +72,12 @@ export const CartProvider = ({ children }) => {
   const [loading, setLoading] = useState(false);
   const [appliedPromo, setAppliedPromo] = useState(null);
 
-  const STORAGE_KEY = "guestCartItems";
-
-  // Fetch server cart for authenticated users
   const fetchCart = useCallback(async () => {
     if (!isAuthenticated) return;
     setLoading(true);
     try {
       const { data } = await api.get("/cart");
-      setCartItems(normalizeCartItems(data?.data || []));
+      setCartItems(normalizeCartItems(data.data));
     } catch (err) {
       console.error("Failed to fetch cart", err);
     } finally {
@@ -114,34 +85,32 @@ export const CartProvider = ({ children }) => {
     }
   }, [isAuthenticated]);
 
-  // Sync on mount / auth change: merge guest cart into user cart on login or load guest cart
   useEffect(() => {
     const sync = async () => {
       if (isAuthenticated) {
-        setLoading(true);
-        try {
-          const guest = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-          if (Array.isArray(guest) && guest.length > 0) {
+        const guest = JSON.parse(
+          localStorage.getItem("guestCartItems") || "[]"
+        );
+        if (guest.length > 0) {
+          try {
             const items = guest.map((i) => ({
               productId: i.id,
-              variantId: i.selectedVariant?.id || null,
+              variantId: i.selectedVariant?.id,
               quantity: i.quantity,
+              price: i.price,
             }));
             const { data } = await api.post("/cart/merge", { items });
-            setCartItems(normalizeCartItems(data?.data || []));
-            localStorage.removeItem(STORAGE_KEY);
-            toast.success("Guest cart merged!");
-          } else {
-            await fetchCart();
+            setCartItems(normalizeCartItems(data.data));
+            localStorage.removeItem("guestCartItems");
+            toast.success("Cart merged successfully!");
+          } catch (e) {
+            console.error(e);
           }
-        } catch (e) {
-          console.error("Cart sync error", e);
+        } else {
           await fetchCart();
-        } finally {
-          setLoading(false);
         }
       } else {
-        const saved = localStorage.getItem(STORAGE_KEY);
+        const saved = localStorage.getItem("guestCartItems");
         setCartItems(normalizeCartItems(saved ? JSON.parse(saved) : []));
         setAppliedPromo(null);
       }
@@ -149,35 +118,24 @@ export const CartProvider = ({ children }) => {
     sync();
   }, [isAuthenticated, fetchCart]);
 
-  // Persist guest cart locally
   useEffect(() => {
-    if (!isAuthenticated) {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(cartItems));
-      } catch (e) {
-        console.error("Failed to persist guest cart", e);
-      }
-    }
+    if (!isAuthenticated)
+      localStorage.setItem("guestCartItems", JSON.stringify(cartItems));
   }, [cartItems, isAuthenticated]);
 
-  /**
-   * Add to cart (handles both guest & authenticated)
-   * product: product object (from product list/detail)
-   * variant: variant object or null
-   * qty: number
-   */
   const addToCart = async (product, variant = null, qty = 1) => {
-    if (!product) return;
+    // 1. Stock Check
     const stock = product.totalStock ?? product.stock ?? 0;
     if (stock < qty) {
-      toast.error("Sorry, this product is out of stock!");
+      toast.error("Sorry, Product is Out of Stock!");
       return;
     }
 
     const pId = product.id || product._id;
-    const vId = variant?.id || variant?._id || null;
+    const vId = variant?.id || variant?._id;
     const cartId = vId ? `${pId}_${vId}` : `${pId}`;
 
+    // 2. Add to Cart
     if (isAuthenticated) {
       try {
         const { data } = await api.post("/cart/add", {
@@ -185,19 +143,17 @@ export const CartProvider = ({ children }) => {
           variantId: vId,
           quantity: qty,
         });
-        setCartItems(normalizeCartItems(data?.data || []));
-        toast.success("Added to cart!");
-      } catch (err) {
-        toast.error(err?.response?.data?.message || "Failed to add to cart");
-        console.error("addToCart error", err);
+        setCartItems(normalizeCartItems(data.data));
+        toast.success("Added to Cart!");
+      } catch (e) {
+        toast.error("Failed to add item.");
       }
     } else {
-      // Guest local cart
       setCartItems((prev) => {
-        const existing = prev.find((i) => i.cartId === cartId);
-        if (existing) {
-          if (existing.quantity + qty > stock) {
-            toast.error("Cannot add more, stock limit reached.");
+        const exists = prev.find((i) => i.cartId === cartId);
+        if (exists) {
+          if (exists.quantity + qty > stock) {
+            toast.error("Stock limit reached!");
             return prev;
           }
           toast.success("Cart updated!");
@@ -206,37 +162,33 @@ export const CartProvider = ({ children }) => {
           );
         }
 
-        // pick image
-        let img = "/placeholder.png";
-        if (product.images?.length) {
-          const primary =
-            product.images.find((im) => im.isPrimary) || product.images[0];
-          img = primary?.fullUrl || primary?.url || img;
+        // New Item (Guest)
+        let imgUrl = "/placeholder.png";
+        if (product.images?.length > 0) {
+          const primary = product.images.find((i) => i.isPrimary);
+          imgUrl = primary
+            ? primary.fullUrl || api.getImageUrl(primary.url)
+            : api.getImageUrl(product.images[0].url);
         } else if (product.image) {
-          img = product.image;
+          imgUrl = api.getImageUrl(product.image);
         }
 
-        const newItem = {
-          cartId,
-          id: pId,
-          name: product.name || "Product",
-          image: img,
-          price:
-            variant?.price ?? product.discountPrice ?? product.basePrice ?? 0,
-          quantity: qty,
-          stock,
-          selectedVariant: variant
-            ? {
-                id: vId,
-                color:
-                  variant.color?.name || variant.color?.value || variant.color,
-                size: variant.size?.name || variant.size?.value || variant.size,
-              }
-            : null,
-          raw: { product, variant, quantity: qty },
-        };
-        toast.success("Added to cart!");
-        return [...prev, newItem];
+        toast.success("Added to Cart!");
+        return [
+          ...prev,
+          {
+            cartId,
+            id: pId,
+            name: product.name,
+            image: imgUrl,
+            price: variant
+              ? variant.price
+              : product.discountPrice || product.basePrice,
+            stock,
+            quantity: qty,
+            selectedVariant: variant ? { id: vId, ...variant } : null,
+          },
+        ];
       });
     }
   };
@@ -245,54 +197,48 @@ export const CartProvider = ({ children }) => {
     const item = cartItems.find((i) => i.cartId === cartId);
     if (!item) return;
 
-    // optimistic update
-    const previous = [...cartItems];
+    // Optimistic Update
+    const oldCart = [...cartItems];
     setCartItems((prev) => prev.filter((i) => i.cartId !== cartId));
-    toast.success("Removed from cart");
+    toast.success("Removed from Cart");
 
     if (isAuthenticated) {
       try {
         await api.post("/cart/remove", {
           productId: item.id,
-          variantId: item.selectedVariant?.id || null,
+          variantId: item.selectedVariant?.id,
         });
-      } catch (err) {
-        toast.error("Failed to sync removal");
-        setCartItems(previous); // rollback
-        console.error("removeFromCart error", err);
+      } catch (e) {
+        toast.error("Network error, item restored.");
+        setCartItems(oldCart);
       }
     }
   };
 
-  const updateQuantity = async (cartId, newQty) => {
-    if (newQty < 1) {
-      return removeFromCart(cartId);
-    }
-
+  const updateQuantity = async (cartId, qty) => {
+    if (qty < 1) return removeFromCart(cartId);
     const item = cartItems.find((i) => i.cartId === cartId);
     if (!item) return;
 
-    if (item.stock < newQty) {
-      toast.error(`Only ${item.stock} items in stock`);
+    if (item.stock < qty) {
+      toast.error(`Only ${item.stock} items available`);
       return;
     }
 
-    const previous = [...cartItems];
+    const oldCart = [...cartItems];
     setCartItems((prev) =>
-      prev.map((i) => (i.cartId === cartId ? { ...i, quantity: newQty } : i))
+      prev.map((i) => (i.cartId === cartId ? { ...i, quantity: qty } : i))
     );
 
     if (isAuthenticated) {
       try {
         await api.post("/cart/update", {
           productId: item.id,
-          variantId: item.selectedVariant?.id || null,
-          quantity: newQty,
+          variantId: item.selectedVariant?.id,
+          quantity: qty,
         });
-      } catch (err) {
-        toast.error("Failed to update quantity");
-        setCartItems(previous);
-        console.error("updateQuantity error", err);
+      } catch (e) {
+        setCartItems(oldCart);
       }
     }
   };
@@ -303,57 +249,46 @@ export const CartProvider = ({ children }) => {
     if (isAuthenticated) {
       try {
         await api.post("/cart/clear");
-      } catch (e) {
-        console.error("clearCart error", e);
-      }
+      } catch {}
     }
   };
 
-  // Promocode logic (server-validated)
   const applyPromocode = async (code) => {
-    if (!code) return;
     if (!isAuthenticated) {
       dispatch(openLoginDrawer());
       return;
     }
     try {
       const { data } = await api.post("/promocodes/validate", { code });
-      setAppliedPromo(data?.data || null);
-      toast.success("Promocode applied!");
-    } catch (err) {
+      setAppliedPromo(data.data);
+      toast.success("Coupon Applied!");
+    } catch (e) {
       setAppliedPromo(null);
-      toast.error(err?.response?.data?.message || "Invalid coupon");
-      console.error("applyPromocode error", err);
+      toast.error(e.response?.data?.message || "Invalid Coupon");
     }
   };
 
   const removePromocode = () => {
     setAppliedPromo(null);
-    toast.success("Promocode removed");
+    toast.success("Coupon removed");
   };
 
   const getCartTotal = () => {
     const subtotal = cartItems.reduce(
-      (acc, i) => acc + Number(i.price || 0) * Number(i.quantity || 0),
+      (acc, i) => acc + i.price * i.quantity,
       0
     );
     let discountAmount = 0;
-
     if (appliedPromo) {
-      if (subtotal >= (appliedPromo.minPurchase || 0)) {
-        if (appliedPromo.discountType === "Fixed") {
-          discountAmount = Number(appliedPromo.discountValue || 0);
-        } else {
-          discountAmount =
-            (subtotal * Number(appliedPromo.discountValue || 0)) / 100;
-          if (appliedPromo.maxDiscount)
-            discountAmount = Math.min(discountAmount, appliedPromo.maxDiscount);
-        }
-      } else {
-        // promo not applicable due to minPurchase — keep discount 0
+      if (subtotal >= appliedPromo.minPurchase) {
+        discountAmount =
+          appliedPromo.discountType === "Fixed"
+            ? appliedPromo.discountValue
+            : (subtotal * appliedPromo.discountValue) / 100;
+        if (appliedPromo.maxDiscount)
+          discountAmount = Math.min(discountAmount, appliedPromo.maxDiscount);
       }
     }
-
     return {
       subtotal,
       discountAmount,
@@ -378,7 +313,8 @@ export const CartProvider = ({ children }) => {
         removePromocode,
         getCartTotal,
         getCartItemsCount: () =>
-          cartItems.reduce((acc, i) => acc + Number(i.quantity || 0), 0),
+          cartItems.reduce((acc, i) => acc + i.quantity, 0),
+        setIsCartOpen,
       }}
     >
       {children}

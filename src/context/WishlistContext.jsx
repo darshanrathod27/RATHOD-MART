@@ -9,39 +9,31 @@ import React, {
 import { useSelector, useDispatch } from "react-redux";
 import api from "../data/api";
 import toast from "react-hot-toast";
-import { openLoginDrawer } from "../store/authSlice"; // adjust path if needed
+import { openLoginDrawer } from "../store/authSlice";
 
 const WishlistContext = createContext();
-export const useWishlist = () => {
-  const ctx = useContext(WishlistContext);
-  if (!ctx) throw new Error("useWishlist must be used within WishlistProvider");
-  return ctx;
-};
+export const useWishlist = () => useContext(WishlistContext);
 
-// Helper: normalize various wishlist item shapes to a simple UI shape
-const normalizeWishlist = (items = []) => {
+const normalize = (items) => {
   if (!Array.isArray(items)) return [];
   return items.map((item) => {
-    // item could be a product object or a wrapper with product inside
-    const raw = item.product || item;
     let imgUrl = "/placeholder.png";
-    try {
-      if (Array.isArray(raw.images) && raw.images.length > 0) {
-        const primary = raw.images.find((i) => i.isPrimary) || raw.images[0];
-        imgUrl = primary?.fullUrl || primary?.url || imgUrl;
-      } else if (raw.image) {
-        imgUrl = raw.image;
-      }
-    } catch (e) {
-      // fallback to placeholder
+    if (item.images?.length > 0) {
+      const primary = item.images.find((i) => i.isPrimary);
+      imgUrl = primary ? primary.url : item.images[0].url;
+    } else if (item.image) {
+      imgUrl = item.image;
     }
 
     return {
-      ...raw,
-      id: raw._id || raw.id,
-      image: imgUrl,
-      price: Number(raw.discountPrice ?? raw.basePrice ?? raw.price ?? 0),
-      raw,
+      id: item._id || item.id,
+      name: item.name,
+      image: api.getImageUrl(imgUrl), // Use Helper
+      price: item.discountPrice || item.basePrice || 0,
+      originalPrice: item.basePrice,
+      discount: item.discountPercent,
+      rating: item.rating,
+      reviews: item.reviewCount,
     };
   });
 };
@@ -49,146 +41,86 @@ const normalizeWishlist = (items = []) => {
 export const WishlistProvider = ({ children }) => {
   const { isAuthenticated } = useSelector((state) => state.auth);
   const dispatch = useDispatch();
-
   const [wishlistItems, setWishlistItems] = useState([]);
   const [isWishlistOpen, setIsWishlistOpen] = useState(false);
-
-  const STORAGE_KEY = "guestWishlistItems";
 
   const fetchWishlist = useCallback(async () => {
     if (!isAuthenticated) return;
     try {
       const { data } = await api.get("/wishlist");
-      setWishlistItems(normalizeWishlist(data?.data || []));
+      setWishlistItems(normalize(data.data || []));
     } catch (err) {
-      console.error("fetchWishlist:", err);
-      setWishlistItems([]);
+      console.error(err);
     }
   }, [isAuthenticated]);
 
-  // Sync on auth change / mount
   useEffect(() => {
     const sync = async () => {
       if (isAuthenticated) {
-        try {
-          const guestItems = JSON.parse(
-            localStorage.getItem(STORAGE_KEY) || "[]"
-          );
-          if (Array.isArray(guestItems) && guestItems.length > 0) {
-            // Merge guest wishlist server-side (API expected to return merged wishlist)
-            const ids = guestItems.map((i) => i.id || i._id).filter(Boolean);
-            const { data } = await api.post("/wishlist/merge", { items: ids });
-            setWishlistItems(normalizeWishlist(data?.data || []));
-            localStorage.removeItem(STORAGE_KEY);
-            toast.success("Wishlist merged");
-          } else {
-            await fetchWishlist();
-          }
-        } catch (err) {
-          console.error("wishlist sync error:", err);
+        const guestItems = JSON.parse(
+          localStorage.getItem("guestWishlistItems") || "[]"
+        );
+        if (guestItems.length > 0) {
+          const ids = guestItems.map((i) => i.id);
+          const { data } = await api.post("/wishlist/merge", { items: ids });
+          setWishlistItems(normalize(data.data));
+          localStorage.removeItem("guestWishlistItems");
+          toast.success("Wishlist merged!");
+        } else {
           await fetchWishlist();
         }
       } else {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        setWishlistItems(normalizeWishlist(saved ? JSON.parse(saved) : []));
+        const saved = localStorage.getItem("guestWishlistItems");
+        setWishlistItems(normalize(saved ? JSON.parse(saved) : []));
       }
     };
     sync();
   }, [isAuthenticated, fetchWishlist]);
 
-  // Persist guest wishlist
   useEffect(() => {
     if (!isAuthenticated) {
-      try {
-        // Save raw objects so shape can be reused later
-        const toSave = wishlistItems.map((i) => i.raw ?? i);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
-      } catch (e) {
-        console.error("persist wishlist error", e);
-      }
+      localStorage.setItem("guestWishlistItems", JSON.stringify(wishlistItems));
     }
   }, [wishlistItems, isAuthenticated]);
 
-  const isItemInWishlist = (pid) =>
-    wishlistItems.some((i) => (i.id || i._id) === pid || i.id === pid);
-
-  /**
-   * toggleWishlist(product)
-   * - If guest -> open login drawer
-   * - Optimistic update locally, attempt API call, rollback by refetching on failure
-   */
   const toggleWishlist = async (product) => {
-    const pid = product?.id || product?._id;
-    if (!pid) {
-      console.warn("toggleWishlist: invalid product", product);
-      return;
-    }
-
+    // Force Login for Wishlist
     if (!isAuthenticated) {
       dispatch(openLoginDrawer());
-      toast("Please login to save items!");
       return;
     }
 
-    const exists = isItemInWishlist(pid);
-    const previous = [...wishlistItems];
+    const pid = product.id || product._id;
+    const exists = wishlistItems.some((i) => i.id === pid);
 
-    // Optimistic UI update
+    // Optimistic UI
     setWishlistItems((prev) => {
       if (exists) {
-        toast.success("Removed from wishlist", { icon: "💔" });
-        return prev.filter((i) => (i.id || i._id) !== pid);
+        toast.success("Removed from Wishlist", { icon: "💔" });
+        return prev.filter((i) => i.id !== pid);
+      } else {
+        toast.success("Added to Wishlist", { icon: "❤️" });
+        return [...prev, normalize([product])[0]];
       }
-      toast.success("Added to wishlist", { icon: "❤️" });
-      return [...prev, normalizeWishlist([product])[0]];
     });
 
     try {
       const endpoint = exists ? "/wishlist/remove" : "/wishlist/add";
       await api.post(endpoint, { productId: pid });
-    } catch (err) {
-      console.error("toggleWishlist API error:", err);
-      toast.error("Failed to sync wishlist");
-      // revert to server state to be safe
-      try {
-        await fetchWishlist();
-      } catch (e) {
-        setWishlistItems(previous);
-      }
+    } catch (e) {
+      toast.error("Failed to sync");
+      fetchWishlist(); // Revert
     }
   };
 
-  const removeFromWishlist = async (pid) => {
-    if (!isAuthenticated) {
-      // Remove locally for guest users
-      setWishlistItems((prev) => prev.filter((i) => (i.id || i._id) !== pid));
-      return;
-    }
-
-    const exists = wishlistItems.find((i) => (i.id || i._id) === pid);
-    if (!exists) return;
-
-    const prev = [...wishlistItems];
-    setWishlistItems((prevItems) =>
-      prevItems.filter((i) => (i.id || i._id) !== pid)
-    );
-    toast.success("Removed from wishlist", { icon: "💔" });
-
-    try {
-      await api.post("/wishlist/remove", { productId: pid });
-    } catch (err) {
-      console.error("removeFromWishlist error:", err);
-      toast.error("Failed to remove from wishlist");
-      setWishlistItems(prev); // rollback
-    }
-  };
+  const removeFromWishlist = (pid) => toggleWishlist({ id: pid });
+  const isItemInWishlist = (pid) => wishlistItems.some((i) => i.id === pid);
 
   return (
     <WishlistContext.Provider
       value={{
         wishlistItems,
         isWishlistOpen,
-        setIsWishlistOpen,
         openWishlist: () => setIsWishlistOpen(true),
         closeWishlist: () => setIsWishlistOpen(false),
         toggleWishlist,
