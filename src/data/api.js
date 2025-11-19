@@ -6,7 +6,6 @@ const RAW_BASE =
   (process.env.REACT_APP_API_URL && String(process.env.REACT_APP_API_URL)) ||
   "http://localhost:5000";
 
-// Ensure no trailing slash on RAW_BASE
 const SERVER_URL = RAW_BASE.replace(/\/+$/, "");
 
 const API_PREFIX =
@@ -16,8 +15,8 @@ const API_PREFIX =
 
 // --- AXIOS INSTANCE ---
 const http = axios.create({
-  baseURL: `${SERVER_URL}${API_PREFIX}`, // e.g. http://localhost:5000/api
-  withCredentials: true, // ensure cookies are sent
+  baseURL: `${SERVER_URL}${API_PREFIX}`,
+  withCredentials: true,
   headers: {
     "Content-Type": "application/json",
   },
@@ -25,10 +24,6 @@ const http = axios.create({
 
 /* ---------- Helpers ---------- */
 
-/**
- * Helper to get full image URL correctly
- * If URL starts with /, prepend server base. If http, leave it.
- */
 const getImageUrl = (path) => {
   if (!path) return null;
   if (
@@ -37,13 +32,10 @@ const getImageUrl = (path) => {
     path.startsWith("data:")
   )
     return path;
-
-  // Remove leading slash if present to avoid double slash
   const cleanPath = path.startsWith("/") ? path.slice(1) : path;
   return `${SERVER_URL}/${cleanPath}`;
 };
 
-/* Build query string from object (arrays allowed) */
 const buildQuery = (params = {}) => {
   const sp = new URLSearchParams();
   Object.entries(params || {}).forEach(([k, v]) => {
@@ -63,16 +55,16 @@ const normalizeProduct = (raw = {}) => {
   const p = { ...raw };
   p.id = p._id || p.id;
 
-  // Normalize Images
-  let imagesObj = [];
+  // 1. Normalize ALL Images first
+  let allImages = [];
   if (Array.isArray(p.images)) {
-    imagesObj = p.images.map((img) => ({
+    allImages = p.images.map((img) => ({
       ...img,
-      // Use getImageUrl to ensure full path
       fullUrl: getImageUrl(
         img.fullUrl || img.fullImageUrl || img.url || img.imageUrl
       ),
       isPrimary: img.isPrimary || img.is_primary || img.primary || false,
+      // Robustly get variant ID string
       variantId:
         img.variantId ||
         (img.variant &&
@@ -80,25 +72,30 @@ const normalizeProduct = (raw = {}) => {
         null,
     }));
   }
-  p.images = imagesObj;
+  p.images = allImages;
 
-  // Determine Primary Image
-  const primaryImg = imagesObj.find((i) => i.isPrimary) || imagesObj[0];
+  // 2. Determine Primary Image
+  const primaryImg = allImages.find((i) => i.isPrimary) || allImages[0];
+  p.image = primaryImg
+    ? primaryImg.fullUrl
+    : getImageUrl(p.image) || "/images/placeholder.webp";
 
-  // Priority: Explicit primary -> First image -> 'image' field -> Placeholder
-  if (primaryImg) {
-    p.image = primaryImg.fullUrl;
-  } else if (p.image) {
-    p.image = getImageUrl(p.image);
-  } else {
-    p.image = "/images/placeholder.webp"; // Ensure you have a placeholder
+  // 3. Separate General Images (Images NOT linked to any variant)
+  // These are shown by default or if a variant has no specific images
+  p.generalImages = allImages
+    .filter((img) => !img.variantId)
+    .map((img) => img.fullUrl);
+
+  // Fallback: if no general images, use the main image
+  if (p.generalImages.length === 0 && p.image) {
+    p.generalImages = [p.image];
   }
 
-  // Normalize Stock (Check both fields from backend)
+  // Normalize Stock
   p.stock = p.totalStock ?? p.stock ?? 0;
   p.inStock = p.stock > 0;
 
-  // Normalize Price & Discount
+  // Normalize Price
   p.price = p.discountPrice ?? p.basePrice ?? 0;
   p.originalPrice =
     p.discountPrice && p.discountPrice < p.basePrice ? p.basePrice : null;
@@ -117,18 +114,17 @@ const normalizeProduct = (raw = {}) => {
     }
   }
 
-  // Text Fields
   p.name = p.name || p.title || "Untitled Product";
   p.shortDescription = p.shortDescription || p.description || "";
   p.description = p.description || p.longDescription || "";
-
-  // Rating
   p.rating = typeof p.rating === "number" ? p.rating : 0;
   p.reviews = typeof p.reviewCount === "number" ? p.reviewCount : 0;
 
-  // Normalize Variants
+  // 4. Normalize Variants and ATTACH specific images
   p.variants = (p.variants || []).map((v) => {
     const id = v._id || v.id;
+    const vIdString = String(id);
+
     const colorObj = v.color
       ? typeof v.color === "object"
         ? {
@@ -147,6 +143,11 @@ const normalizeProduct = (raw = {}) => {
         : { name: v.size, value: "" }
       : null;
 
+    // **CRITICAL FIX:** Filter images specifically for this variant ID
+    const variantSpecificImages = allImages
+      .filter((img) => String(img.variantId) === vIdString)
+      .map((img) => img.fullUrl);
+
     return {
       id,
       _id: id,
@@ -155,7 +156,8 @@ const normalizeProduct = (raw = {}) => {
       stock: v.currentStock ?? v.stock ?? 0,
       color: colorObj,
       size: sizeObj,
-      images: v.images || [], // Variant specific images if any
+      // Use specific images if found, otherwise empty (UI will fallback to general)
+      images: variantSpecificImages,
       raw: v,
     };
   });
@@ -165,9 +167,6 @@ const normalizeProduct = (raw = {}) => {
 
 /* ---------- API functions ---------- */
 
-/**
- * Fetch products (list)
- */
 export const fetchProducts = async (params = {}) => {
   const qs = buildQuery(params);
   try {
@@ -180,30 +179,22 @@ export const fetchProducts = async (params = {}) => {
   }
 };
 
-/**
- * Fetch single product by id
- */
 export const fetchProductById = async (id) => {
   if (!id) throw new Error("id required");
   try {
     const { data } = await http.get(`/products/${id}`);
     return data?.data ? normalizeProduct(data.data) : null;
   } catch (err) {
-    console.error("fetchProductById error:", err?.message || err);
     return null;
   }
 };
 
-/**
- * Fetch product variants (inventory controller)
- */
 export const fetchProductVariants = async (productId) => {
   if (!productId) return [];
   try {
     const { data } = await http.get(`/inventory/product-variants/${productId}`);
     const arr = data?.data || [];
 
-    // Normalize variant structure
     return arr.map((v) => {
       const id = v._id || v.id;
       const color =
@@ -234,20 +225,15 @@ export const fetchProductVariants = async (productId) => {
       };
     });
   } catch (err) {
-    console.error("fetchProductVariants error:", err?.message || err);
     return [];
   }
 };
 
-/**
- * Fetch categories
- */
 export const fetchCategories = async (params = {}) => {
   const qs = buildQuery(params);
   try {
     const { data } = await http.get(`/categories${qs}`);
     const arr = data?.data || [];
-
     return arr.map((cat) => ({
       id: cat._id,
       _id: cat._id,
@@ -258,14 +244,10 @@ export const fetchCategories = async (params = {}) => {
       slug: cat.slug,
     }));
   } catch (err) {
-    console.error("fetchCategories error:", err?.message || err);
     return [];
   }
 };
 
-/**
- * Fetch brands
- */
 export const fetchBrands = async (params = {}) => {
   try {
     const qs = buildQuery(params);
@@ -276,16 +258,11 @@ export const fetchBrands = async (params = {}) => {
   }
 };
 
-/**
- * Fetch offer products (filter by discount)
- */
 export const fetchOfferProducts = async ({
   minDiscount = 30,
   limit = 48,
 } = {}) => {
   try {
-    // We reuse fetchProducts but filter on client or server depending on API capability
-    // For now, assuming client filtering if server param doesn't exist
     const prods = await fetchProducts({ limit });
     return prods.filter((p) => (p.discountPercent || 0) >= minDiscount);
   } catch (err) {
@@ -293,9 +270,6 @@ export const fetchOfferProducts = async ({
   }
 };
 
-/**
- * Fetch available coupons
- */
 export const fetchAvailableCoupons = async () => {
   try {
     const { data } = await http.get("/promocodes/available");
@@ -305,9 +279,7 @@ export const fetchAvailableCoupons = async () => {
   }
 };
 
-/* --- Reviews --- */
 export const fetchReviewsForProduct = async (productId, params = {}) => {
-  if (!productId) throw new Error("Product ID is required");
   const qs = buildQuery(params);
   try {
     const { data } = await http.get(`/reviews/${productId}${qs}`);
@@ -318,7 +290,6 @@ export const fetchReviewsForProduct = async (productId, params = {}) => {
 };
 
 export const submitReview = async (productId, reviewData) => {
-  if (!productId) throw new Error("Product ID is required");
   try {
     const { data } = await http.post(`/reviews/${productId}`, reviewData);
     return data;
@@ -327,15 +298,11 @@ export const submitReview = async (productId, reviewData) => {
   }
 };
 
-/* ---------- Export ---------- */
 const api = {
-  // Raw axios methods
   post: http.post.bind(http),
   get: http.get.bind(http),
   put: http.put ? http.put.bind(http) : undefined,
   delete: http.delete ? http.delete.bind(http) : undefined,
-
-  // Domain methods
   fetchProducts,
   fetchProductById,
   fetchProductVariants,
@@ -345,8 +312,6 @@ const api = {
   fetchAvailableCoupons,
   fetchReviewsForProduct,
   submitReview,
-
-  // Helpers
   buildQuery,
   getImageUrl,
   normalizeProduct,
