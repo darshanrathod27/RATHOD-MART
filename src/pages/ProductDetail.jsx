@@ -238,10 +238,6 @@ const ProductDetail = () => {
   const handleAddToCart = () => {
     if (!product) return;
     addToCart(product, selectedVariant || null);
-    toast.success(`${product.name} added to cart!`, {
-      icon: "🛒",
-      style: { background: "#2E7D32", color: "#fff", fontWeight: 600 },
-    });
   };
 
   const handleBuyNow = () => {

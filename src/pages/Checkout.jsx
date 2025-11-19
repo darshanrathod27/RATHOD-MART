@@ -1,3 +1,4 @@
+// frontend/src/pages/Checkout.jsx
 import React, { useState, useEffect } from "react";
 import {
   Container,
@@ -19,7 +20,7 @@ import { MyLocation, ArrowBack } from "@mui/icons-material";
 import { useCart } from "../context/CartContext";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
-import api from "../data/api";
+import api from "../data/api"; // Updated API helper
 import { useSelector, useDispatch } from "react-redux";
 import { setCredentials } from "../store/authSlice";
 
@@ -27,22 +28,15 @@ const Checkout = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch();
 
-  // Cart Context
   const { cartItems, getCartTotal, clearCart } = useCart();
-
-  // Auth Redux State
   const { userInfo } = useSelector((state) => state.auth);
-
-  // Derived Cart Values
   const { total, subtotal, discountAmount } = getCartTotal();
 
-  // Local State
   const [loading, setLoading] = useState(false);
   const [locating, setLocating] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("cod");
   const [saveAddress, setSaveAddress] = useState(false);
 
-  // Address State (Prefill from user profile if available)
   const [address, setAddress] = useState({
     street: "",
     city: "",
@@ -51,7 +45,6 @@ const Checkout = () => {
     country: "India",
   });
 
-  // Initialize address from Redux state on mount
   useEffect(() => {
     if (userInfo?.address) {
       setAddress({
@@ -64,12 +57,10 @@ const Checkout = () => {
     }
   }, [userInfo]);
 
-  // Handle Input Change
   const handleAddressChange = (e) => {
     setAddress({ ...address, [e.target.name]: e.target.value });
   };
 
-  // "Locate Me" Feature (Free using OpenStreetMap/Nominatim)
   const handleLocateMe = () => {
     if (!navigator.geolocation) {
       toast.error("Geolocation is not supported by your browser.");
@@ -117,9 +108,7 @@ const Checkout = () => {
     );
   };
 
-  // Place Order Handler
   const handlePlaceOrder = async () => {
-    // 1. Validation
     if (cartItems.length === 0) {
       toast.error("Your cart is empty.");
       return;
@@ -131,7 +120,7 @@ const Checkout = () => {
 
     setLoading(true);
     try {
-      // 2. Save Address to Profile (if checked)
+      // 1. Update Profile Address if selected
       if (saveAddress) {
         const fd = new FormData();
         fd.append("address[street]", address.street);
@@ -140,23 +129,22 @@ const Checkout = () => {
         fd.append("address[postalCode]", address.zip);
         fd.append("address[country]", address.country);
 
-        // Note: Assuming your backend supports partial update without re-uploading image
-        // If not, you might need a dedicated address update endpoint
         try {
-          const userRes = await api.put("/users/profile", fd);
-          dispatch(setCredentials(userRes.data)); // Update Redux
+          const userRes = await api.put("/users/profile", fd, {
+            headers: { "Content-Type": "multipart/form-data" },
+          });
+          dispatch(setCredentials(userRes.data));
         } catch (updateErr) {
           console.warn("Failed to save address to profile:", updateErr);
-          // Don't block order placement just because profile save failed
         }
       }
 
-      // 3. Construct Order Data
+      // 2. Construct Order Data
       const orderData = {
         orderItems: cartItems.map((item) => ({
           product: item.id,
           name: item.name,
-          image: item.image, // Ensure this is a valid string path
+          image: item.image,
           price: item.price,
           qty: item.quantity,
           variant: item.selectedVariant ? item.selectedVariant.id : null,
@@ -166,25 +154,23 @@ const Checkout = () => {
           city: address.city,
           postalCode: address.zip,
           country: address.country,
+          state: address.state,
         },
         paymentMethod: paymentMethod,
         itemsPrice: subtotal,
         discountPrice: discountAmount,
         totalPrice: total,
-        isPaid: paymentMethod === "online" ? true : false, // Logic for online payment would go here
       };
 
-      // 4. Call Backend API
-      // Ensure you have created the /api/orders route in your backend
-      // If not, this will throw 404, but for now we simulate success if backend isn't ready
-      // await api.post("/orders", orderData);
+      // 3. Call Backend API
+      const res = await api.post("/orders", orderData);
 
-      // Simulate Network Request
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      toast.success("Order placed successfully!");
-      clearCart();
-      navigate("/"); // Or navigate to an Order Success page
+      if (res.status === 201 || res.data) {
+        toast.success("Order placed successfully!");
+        clearCart();
+        // Redirect to home for now (or create an Order Success page later)
+        navigate("/");
+      }
     } catch (err) {
       console.error("Order placement failed:", err);
       const msg =
@@ -198,7 +184,6 @@ const Checkout = () => {
 
   return (
     <Container maxWidth="lg" sx={{ py: 4, minHeight: "80vh" }}>
-      {/* Header */}
       <Button
         startIcon={<ArrowBack />}
         onClick={() => navigate(-1)}
@@ -215,9 +200,8 @@ const Checkout = () => {
       </Typography>
 
       <Grid container spacing={4}>
-        {/* Left Column: Address & Payment */}
+        {/* Left Column */}
         <Grid item xs={12} md={7}>
-          {/* Shipping Address Card */}
           <Paper
             elevation={0}
             sx={{ p: 3, mb: 3, border: "1px solid #e0e0e0", borderRadius: 3 }}
@@ -246,11 +230,10 @@ const Checkout = () => {
                 {locating ? "Locating..." : "Locate Me"}
               </Button>
             </Box>
-
             <Grid container spacing={2}>
               <Grid item xs={12}>
                 <TextField
-                  label="Street Address / Flat / House No."
+                  label="Street Address"
                   name="street"
                   fullWidth
                   value={address.street}
@@ -312,13 +295,12 @@ const Checkout = () => {
                       color="primary"
                     />
                   }
-                  label="Save this address to my profile for future orders"
+                  label="Save address to profile"
                 />
               </Grid>
             </Grid>
           </Paper>
 
-          {/* Payment Method Card */}
           <Paper
             elevation={0}
             sx={{ p: 3, border: "1px solid #e0e0e0", borderRadius: 3 }}
@@ -339,7 +321,7 @@ const Checkout = () => {
                       Cash on Delivery (COD)
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      Pay when your order arrives
+                      Pay when order arrives
                     </Typography>
                   </Box>
                 }
@@ -352,9 +334,7 @@ const Checkout = () => {
                 disabled
                 label={
                   <Box sx={{ opacity: 0.6 }}>
-                    <Typography fontWeight="600">
-                      Online Payment (UPI / Cards)
-                    </Typography>
+                    <Typography fontWeight="600">Online Payment</Typography>
                     <Typography variant="caption" color="text.secondary">
                       Coming Soon
                     </Typography>
@@ -365,7 +345,7 @@ const Checkout = () => {
           </Paper>
         </Grid>
 
-        {/* Right Column: Order Summary */}
+        {/* Right Column */}
         <Grid item xs={12} md={5}>
           <Paper
             elevation={0}
@@ -380,7 +360,6 @@ const Checkout = () => {
             <Typography variant="h6" fontWeight="700" sx={{ mb: 3 }}>
               Order Summary
             </Typography>
-
             <Stack spacing={2} sx={{ mb: 3 }}>
               {cartItems.map((item) => (
                 <Box
@@ -431,22 +410,18 @@ const Checkout = () => {
                 </Box>
               ))}
             </Stack>
-
             <Divider sx={{ mb: 2 }} />
-
             <Stack spacing={1.5}>
               <Box sx={{ display: "flex", justifyContent: "space-between" }}>
                 <Typography color="text.secondary">Subtotal</Typography>
                 <Typography fontWeight="600">₹{subtotal.toFixed(2)}</Typography>
               </Box>
-
               <Box sx={{ display: "flex", justifyContent: "space-between" }}>
                 <Typography color="text.secondary">Discount</Typography>
                 <Typography fontWeight="600" color="success.main">
                   - ₹{discountAmount.toFixed(2)}
                 </Typography>
               </Box>
-
               <Box sx={{ display: "flex", justifyContent: "space-between" }}>
                 <Typography color="text.secondary">Shipping</Typography>
                 <Typography fontWeight="600" color="success.main">
@@ -454,9 +429,7 @@ const Checkout = () => {
                 </Typography>
               </Box>
             </Stack>
-
             <Divider sx={{ my: 2 }} />
-
             <Box
               sx={{ display: "flex", justifyContent: "space-between", mb: 3 }}
             >
@@ -467,7 +440,6 @@ const Checkout = () => {
                 ₹{total.toFixed(2)}
               </Typography>
             </Box>
-
             <Button
               fullWidth
               variant="contained"
